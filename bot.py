@@ -228,3 +228,43 @@ async def cmd_backup(app, msg, args):
             os.remove(tmp)
 
 
+async def cmd_update_auth(app, msg, args):
+    chat = msg["chat"]["id"]
+    name, _, body = args.partition(" ")
+    name = name.lower()
+    if name not in app.parsers:
+        await app.bot.send_message(chat, f"Формат: <code>/update_auth &lt;{'|'.join(app.parsers)}&gt; "
+                                         "&lt;cURL или JSON&gt;</code>")
+        return
+    doc = msg.get("document")
+    if doc:
+        if (doc.get("file_size") or 0) > MAX_AUTH_FILE:
+            await app.bot.send_message(chat, "Файл слишком большой (лимит 512 КБ)")
+            return
+        body = (await app.bot.download(doc["file_id"], MAX_AUTH_FILE)).decode("utf-8", "replace")
+    try:
+        patch = parse_auth_patch(body)
+    except (ValueError, json.JSONDecodeError) as e:
+        await app.bot.send_message(chat, f"❌ Не разобрал: {escape(str(e))}")
+        return
+    op = await app.cfg.update_operator(name, patch)
+    parser = app.parsers[name]
+    parser.sleep_until = parser.last_refresh = 0.0
+    parser.trips = parser.net_errors = 0
+    parser._targets, parser._idx = [], 0
+    if parser.session:
+        parser.session.cookie_jar.clear()
+    try:
+        await app.bot.delete_message(chat, msg["message_id"])  # в сообщении могли быть куки/токены
+    except TgError:
+        pass
+    await app.bot.send_message(chat, f"✅ {escape(parser.TITLE)} обновлён: {op['method']} "
+                                     f"<code>{escape(op['url'][:200])}</code>")
+
+
+COMMANDS = {
+    "start": cmd_start, "status": cmd_status, "stats": cmd_status, "digest": cmd_digest, "score": cmd_score,
+    "turbo": cmd_turbo, "live": cmd_live, "test": cmd_test, "backup": cmd_backup, "update_auth": cmd_update_auth,
+}
+
+
