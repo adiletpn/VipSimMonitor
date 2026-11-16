@@ -242,3 +242,43 @@ class BaseParser:
             logging.getLogger(self.NAME).warning("Прогрев кук не удался: %s", e)
         await self._load_categories(session)
 
+    async def _load_categories(self, session: aiohttp.ClientSession) -> None:
+        """Справочник категорий {id: цена}: нужен, когда в списке номеров есть только id категории."""
+        url = self.cfg.get("categories_url")
+        if not url:
+            return
+        headers = self._api_headers()
+        try:
+            async with session.get(url, headers=headers, cookies=self.cfg.get("cookies") or None,
+                                   proxy=self.app_cfg.proxy_url) as resp:
+                data = json.loads(await self._read_limited(resp))
+            items = data.get("data", data) if isinstance(data, dict) else data
+            self.cat_prices = {it["id"]: _to_price(it.get("price")) for it in items
+                               if isinstance(it, dict) and "id" in it}
+        except Exception as e:
+            logging.getLogger(self.NAME).warning("Категории не загружены: %s", e)
+
+    async def fetch(self, prefix: str, mask: str, page: int, category: str = "") -> bytes:
+        c = self.cfg
+        ctx = self._ctx(prefix, mask, page, category)
+        headers = self._api_headers(ctx)
+        kw = {"headers": headers, "cookies": c.get("cookies") or None, "proxy": self.app_cfg.proxy_url,
+              "params": _fill(c.get("params") or {}, ctx) or None}
+        method = (c.get("method") or "GET").upper()
+        payload = c.get("payload")
+        if method != "GET" and payload is not None:
+            payload = _fill(payload, ctx)
+            ctype = next((v for k, v in headers.items() if k.lower() == "content-type"), "").lower()
+            if "x-www-form-urlencoded" in ctype and isinstance(payload, dict):
+                kw["data"] = {k: str(v) for k, v in payload.items()}
+            else:
+                kw["json"] = payload
+        session = await self._ensure_session()
+        self.requests += 1
+        async with session.request(method, _fill(c["url"], ctx), **kw) as resp:
+            if resp.status in (403, 429):
+                raise Blocked(resp.status, resp.headers.get("Retry-After"))
+            if resp.status >= 400:
+                raise HttpError(f"HTTP {resp.status}")
+            return await self._read_limited(resp)
+
