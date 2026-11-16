@@ -231,3 +231,37 @@ class Database:
         await self.conn.execute("PRAGMA optimize")
         return deleted
 
+    async def checkpoint(self) -> None:
+        await self.conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+
+    async def backup_to(self, target: str) -> str:
+        """Консистентная копия БД через SQLite Online Backup API."""
+        if os.path.exists(target):
+            os.remove(target)
+        async with aiosqlite.connect(target) as dst:
+            await self.conn.backup(dst)
+        return target
+
+    # ---------- статистика ----------
+    async def _one(self, sql: str, args=()) -> tuple:
+        async with self.conn.execute(sql, args) as cur:
+            return await cur.fetchone()
+
+    async def stats(self) -> dict:
+        day_ago = int(time.time()) - DAY
+        s_day = await self._one("SELECT COALESCE(SUM(scanned),0), COALESCE(SUM(fresh),0) FROM stats "
+                                "WHERE day = date('now', '+5 hours')")
+        s_all = await self._one("SELECT COALESCE(SUM(scanned),0), COALESCE(SUM(fresh),0) FROM stats")
+        c_day = await self._one("SELECT COUNT(*) FROM catches WHERE ts >= ?", (day_ago,))
+        c_all = await self._one("SELECT COUNT(*) FROM catches")
+        jack = await self._one("SELECT COUNT(*) FROM catches WHERE score >= 90")
+        async with self.conn.execute(
+                "SELECT phone, operator, score, price, ts FROM catches ORDER BY score DESC, ts DESC LIMIT 3") as cur:
+            top = await cur.fetchall()
+        async with self.conn.execute(
+                "SELECT operator, SUM(scanned), SUM(fresh) FROM stats WHERE day = date('now', '+5 hours') "
+                "GROUP BY operator ORDER BY operator") as cur:
+            per_op = await cur.fetchall()
+        return {"scanned_day": s_day[0], "fresh_day": s_day[1], "scanned_all": s_all[0], "fresh_all": s_all[1],
+                "catches_day": c_day[0], "catches_all": c_all[0], "jackpots": jack[0], "top": top,
+                "per_op": per_op}
