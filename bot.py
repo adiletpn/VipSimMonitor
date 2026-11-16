@@ -343,3 +343,46 @@ async def on_callback(app, cq: dict) -> None:
         await app.bot.answer_callback(cq["id"])
 
 
+# ---------- приём обновлений ----------
+async def handle_update(app, upd: dict) -> None:
+    admin = app.cfg.admin_chat_id
+    if "callback_query" in upd:
+        cq = upd["callback_query"]
+        if (cq.get("message") or {}).get("chat", {}).get("id") != admin:
+            return
+        await on_callback(app, cq)
+        return
+    msg = upd.get("message")
+    if not msg or msg.get("chat", {}).get("id") != admin:
+        return
+    m = _CMD.match(msg.get("text") or msg.get("caption") or "")
+    if m and m.group(1).lower() in COMMANDS:
+        await COMMANDS[m.group(1).lower()](app, msg, m.group(2).strip())
+
+
+async def polling(app, stop: asyncio.Event) -> None:
+    """Long polling getUpdates. Подтверждённый offset хранится в app.tg_offset (досылается при остановке)."""
+    bot = app.bot
+    await bot.call("deleteWebhook", drop_pending_updates=False)
+    me = await bot.call("getMe")
+    log.info("Поллинг запущен: @%s", me.get("username"))
+    while not stop.is_set():
+        try:
+            updates = await bot.call("getUpdates", offset=app.tg_offset, timeout=25,
+                                     allowed_updates=["message", "callback_query"], _http_timeout=40)
+        except asyncio.CancelledError:
+            raise
+        except TgError as e:  # 409 Conflict при перекрытии деплоев и т.п.
+            log.warning("getUpdates: %s", e)
+            await asyncio.sleep(5)
+            continue
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            log.warning("getUpdates сеть: %r", e)
+            await asyncio.sleep(3)
+            continue
+        for upd in updates or []:
+            app.tg_offset = upd["update_id"] + 1
+            try:
+                await handle_update(app, upd)
+            except Exception:
+                log.exception("Ошибка обработки апдейта")
