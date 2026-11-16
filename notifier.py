@@ -85,3 +85,27 @@ class Notifier:
                 await asyncio.sleep(2 * (attempt + 1))
         self.dropped += 1
 
+    async def run(self, stop: asyncio.Event) -> None:
+        while not stop.is_set():
+            try:
+                item = await asyncio.wait_for(self.queue.get(), timeout=5)
+            except asyncio.TimeoutError:
+                continue
+            try:
+                await self._send(item[3], item[4], item[5])
+            except Exception:
+                log.exception("Сбой отправки уведомления")
+            finally:
+                self.queue.task_done()
+            await asyncio.sleep(SEND_PAUSE)
+
+    async def drain(self, timeout: float = 10) -> None:
+        """При остановке пытаемся дослать то, что уже в очереди."""
+        try:
+            while not self.queue.empty():
+                item = self.queue.get_nowait()
+                await asyncio.wait_for(self._send(item[3], item[4], item[5]), timeout=timeout)
+                self.queue.task_done()
+                await asyncio.sleep(SEND_PAUSE)
+        except (asyncio.TimeoutError, Exception) as e:
+            log.warning("Досылка очереди прервана: %s", e)
