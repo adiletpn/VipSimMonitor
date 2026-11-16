@@ -431,3 +431,10 @@ class BaseParser:
             await _sleep(stop, self.next_delay())
 
 
+async def _sleep(stop: asyncio.Event, seconds: float) -> None:
+    if seconds <= 0:
+        return
+    try:
+        await asyncio.wait_for(stop.wait(), timeout=seconds)
+    except asyncio.TimeoutError:
+        pass
