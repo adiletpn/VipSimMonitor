@@ -387,3 +387,47 @@ class BaseParser:
                                f"остальные операторы работают.", silent=True, total=-1)
         return pause
 
+    # ---------- главный цикл ----------
+    async def run(self, stop: asyncio.Event) -> None:
+        log = logging.getLogger(self.NAME)
+        await _sleep(stop, random.uniform(1, 15))  # разнесём старт операторов во времени
+        while not stop.is_set():
+            if not self.configured():
+                self.state = "⚪ не настроен (/update_auth)"
+                await _sleep(stop, 30)
+                continue
+            if self.sleep_until > time.monotonic():
+                await _sleep(stop, self.sleep_until - time.monotonic())
+                if self.session:
+                    self.session.cookie_jar.clear()
+                self.last_refresh = 0.0
+                continue
+            if time.monotonic() - self.last_refresh > self.app_cfg.refresh_every:
+                await self.refresh_session()
+                await _sleep(stop, random.uniform(2, 6))
+            target = self._next_target()
+            try:
+                found = self.extract(await self.fetch(*target))
+                await self.process(found)
+                self.trips = self.net_errors = 0
+                self.last_ok = time.time()
+                self.state = f"🟢 OK · {len(found)} в ответе" if found else "🟡 пустой ответ (маска/кука?)"
+            except Blocked as e:
+                self._trip(f"HTTP {e.status}", e.retry_after)
+                continue
+            except (aiohttp.ClientError, asyncio.TimeoutError, HttpError) as e:
+                self.net_errors += 1
+                self.state = f"🟠 ошибка: {str(e)[:60] or type(e).__name__}"
+                log.warning("Сетевая ошибка #%d: %r", self.net_errors, e)
+                if self.net_errors >= NET_ERRORS_TO_TRIP:
+                    self.net_errors = 0
+                    self._trip(f"{NET_ERRORS_TO_TRIP} сетевые ошибки подряд")
+                    continue
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.state = f"🟠 сбой: {type(e).__name__}"
+                log.exception("Необработанная ошибка парсера")
+            await _sleep(stop, self.next_delay())
+
+
