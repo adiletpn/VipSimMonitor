@@ -279,3 +279,67 @@ async def _edit_or_send(app, chat: int, mid: int, text: str, keyboard: dict, sen
             await app.bot.send_message(chat, text, reply_markup=keyboard)
 
 
+async def on_callback(app, cq: dict) -> None:
+    data = cq.get("data") or ""
+    msg = cq["message"]
+    chat, mid = msg["chat"]["id"], msg["message_id"]
+    if data == "status":
+        await app.bot.answer_callback(cq["id"])
+        await app.bot.send_message(chat, await status_text(app), reply_markup=STATUS_KB)
+    elif data == "menu":
+        await app.bot.answer_callback(cq["id"])
+        await _edit_or_send(app, chat, mid, "Меню 👇", STATUS_KB)
+    elif data.startswith("list:"):
+        _, key, *rest = data.split(":")
+        if key in SECTIONS:
+            await app.bot.answer_callback(cq["id"])
+            text, keyboard = await section_view(app, key, int(rest[0]) if rest else 0)
+            if rest and rest[0] != "0":  # листание — в том же сообщении
+                await _edit_or_send(app, chat, mid, text, keyboard)
+            else:
+                await app.bot.send_message(chat, text, reply_markup=keyboard)
+    elif data == "favs":
+        await app.bot.answer_callback(cq["id"])
+        text, keyboard = await favs_view(app)
+        await app.bot.send_message(chat, text, reply_markup=keyboard)
+    elif data.startswith("fav:"):
+        _, phone, *back = data.split(":")
+        on = await app.db.toggle_fav(phone)
+        await app.bot.answer_callback(cq["id"], "Добавил в избранное ❤️" if on else "Убрал из избранного")
+        if back:  # нажали в списке — перерисовываем, чтобы сердечки обновились
+            if back[0] == "favs":
+                text, keyboard = await favs_view(app)
+            else:
+                key, page = back[0].split(".")
+                text, keyboard = await section_view(app, key, int(page))
+            await _edit_or_send(app, chat, mid, text, keyboard, send=False)
+    elif data.startswith("hide:"):
+        await app.db.hide(data[5:])
+        await app.bot.answer_callback(cq["id"], "Убрал — больше не покажу")
+        try:
+            await app.bot.delete_message(chat, mid)
+        except TgError:
+            pass
+    elif data == "clear:all":
+        await app.bot.answer_callback(cq["id"])
+        await app.bot.send_message(chat, "Очистить <b>все</b> пойманные номера? Избранное ❤️ останется.",
+                                   reply_markup=CONFIRM_ALL_KB)
+    elif data.startswith("clear:") or data == "clearok:all":
+        key = data.split(":", 1)[1]
+        if key == "all":
+            n = await app.db.hide_range(0, 10 ** 9)
+        elif key in SECTIONS:
+            n = await app.db.hide_range(SECTIONS[key][1], SECTIONS[key][2])
+        else:
+            await app.bot.answer_callback(cq["id"])
+            return
+        await app.bot.answer_callback(cq["id"], f"Убрал {n} номеров")
+        try:
+            await app.bot.edit_message_text(chat, mid, f"🗑 Очищено: {n} номеров. Избранное не тронуто. "
+                                                       "Новые находки появятся снова.", reply_markup=STATUS_KB)
+        except TgError:
+            pass
+    else:
+        await app.bot.answer_callback(cq["id"])
+
+
