@@ -208,3 +208,26 @@ class Database:
         await self.conn.commit()
         return len(upd)
 
+    async def hide(self, phone: str) -> None:
+        await self.conn.execute("UPDATE catches SET hidden = 1, fav = 0 WHERE phone = ?", (phone,))
+        await self.conn.commit()
+
+    async def hide_range(self, price_from: int, price_to: int) -> int:
+        cur = await self.conn.execute("UPDATE catches SET hidden = 1 "
+                                      "WHERE hidden = 0 AND fav = 0 AND price BETWEEN ? AND ?",
+                                      (price_from, price_to))
+        n = cur.rowcount
+        await cur.close()
+        await self.conn.commit()
+        return n
+
+    # ---------- обслуживание ----------
+    async def cleanup(self) -> int:
+        cur = await self.conn.execute("DELETE FROM seen WHERE ts < ?", (int(time.time()) - RETENTION,))
+        deleted = cur.rowcount
+        await cur.close()
+        await self.conn.commit()
+        await self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        await self.conn.execute("PRAGMA optimize")
+        return deleted
+
