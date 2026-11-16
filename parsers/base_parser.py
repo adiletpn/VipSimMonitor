@@ -214,3 +214,31 @@ class BaseParser:
         if self.session and not self.session.closed:
             await self.session.close()
 
+    @staticmethod
+    async def _read_limited(resp: aiohttp.ClientResponse) -> bytes:
+        if resp.content_length and resp.content_length > MAX_BODY:
+            raise HttpError(f"ответ {resp.content_length} байт — слишком большой")
+        buf = bytearray()
+        async for chunk in resp.content.iter_chunked(65536):
+            buf += chunk
+            if len(buf) > MAX_BODY:
+                raise HttpError("ответ больше лимита")
+        return bytes(buf)
+
+    # ---------- сеть ----------
+    async def refresh_session(self) -> None:
+        """Лёгкий GET на главную витрины — обновляет сессионные куки, как обычный заход в браузере."""
+        url = self.cfg.get("warmup_url") or self.HOME
+        self.last_refresh = time.monotonic()
+        if not url:
+            return
+        session = await self._ensure_session()
+        try:
+            async with session.get(url, headers=self._base_headers(True), cookies=self.cfg.get("cookies") or None,
+                                   proxy=self.app_cfg.proxy_url, allow_redirects=True) as resp:
+                await self._read_limited(resp)
+                logging.getLogger(self.NAME).info("Прогрев кук: %s -> %s", url, resp.status)
+        except Exception as e:
+            logging.getLogger(self.NAME).warning("Прогрев кук не удался: %s", e)
+        await self._load_categories(session)
+
