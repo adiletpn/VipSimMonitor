@@ -282,3 +282,31 @@ class BaseParser:
                 raise HttpError(f"HTTP {resp.status}")
             return await self._read_limited(resp)
 
+    # ---------- разбор ответа ----------
+    def _phone_from_dict(self, node: dict) -> str | None:
+        for k, v in node.items():
+            if str(k).lower() in self.PHONE_KEYS and isinstance(v, (str, int)) and not isinstance(v, bool):
+                ph = normalize(v)
+                if ph:
+                    return ph
+        for v in node.values():
+            if isinstance(v, (str, int)) and not isinstance(v, bool):
+                ph = normalize(v)
+                if ph:
+                    return ph
+        return None
+
+    def _price_from_dict(self, node: dict) -> int | None:
+        for k, v in node.items():
+            lk = str(k).lower()
+            if lk in ("isfree", "free", "is_free") and v is True:
+                return 0
+            if any(p in lk for p in _PRICE_KEYS) and not any(s in lk for s in _PRICE_SKIP):
+                pr = _to_price(v)
+                if pr is not None:
+                    return pr
+        cat = node.get("category", node.get("categoryId"))
+        if cat is not None and cat in self.cat_prices:
+            return self.cat_prices[cat]
+        return None
+
