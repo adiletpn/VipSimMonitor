@@ -88,3 +88,33 @@ def _to_price(v) -> int | None:
     return None
 
 
+class BaseParser:
+    NAME = "base"
+    TITLE = "Base"
+    HOME = ""
+    PHONE_KEYS = ("msisdn", "phone", "phonenumber", "phone_number", "number", "ctn", "value")
+
+    __slots__ = ("cfg", "app_cfg", "db", "notifier", "connector", "session", "ua", "sleep_until",
+                 "trips", "net_errors", "last_refresh", "state", "requests", "scanned", "fresh",
+                 "caught", "last_ok", "_targets", "_idx", "cat_prices", "device_id")
+
+    def __init__(self, app_cfg, db, notifier, connector: aiohttp.TCPConnector):
+        self.app_cfg = app_cfg
+        self.cfg = app_cfg.operators[self.NAME]
+        self.db = db
+        self.notifier = notifier
+        self.connector = connector
+        self.session: aiohttp.ClientSession | None = None
+        self.ua = random.choice(USER_AGENTS)  # один UA на всю «жизнь» сессии, как у живого человека
+        self.sleep_until = 0.0
+        self.trips = 0
+        self.net_errors = 0
+        self.last_refresh = 0.0
+        self.state = "⏳ старт"
+        self.requests = self.scanned = self.fresh = self.caught = 0
+        self.last_ok = 0.0
+        self._targets: list[tuple[str, str, int, str]] = []
+        self._idx = 0
+        self.cat_prices: dict = {}  # id категории -> цена (если API отдаёт номер без цены)
+        self.device_id = str(uuid.uuid4())  # постоянный «ID устройства», как у реального браузера
+
