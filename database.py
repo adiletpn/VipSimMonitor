@@ -183,3 +183,28 @@ class Database:
                 (price_from, price_to, int(time.time()) - hours * 3600, min_score, limit, offset)) as cur:
             return await cur.fetchall()
 
+    async def count_available(self, price_from: int, price_to: int, min_score: int, hours: int = 12) -> int:
+        row = await self._one("SELECT COUNT(*) " + self._AVAIL,
+                              (price_from, price_to, int(time.time()) - hours * 3600, min_score))
+        return row[0]
+
+    async def best_available(self, min_score: int, hours: int = 12, limit: int = 7) -> list:
+        """Лучшие номера, которые сейчас есть на витрине: (phone, operator, score, price, last_seen)."""
+        async with self.conn.execute(
+                "SELECT phone, operator, score, price, last_seen FROM catches WHERE hidden = 0 AND last_seen >= ? "
+                "AND score >= ? ORDER BY score DESC, last_seen DESC LIMIT ?",
+                (int(time.time()) - hours * 3600, min_score, limit)) as cur:
+            return await cur.fetchall()
+
+    async def rescore(self, fn) -> int:
+        """Пересчитать баллы всех уловов текущим скорером. fn(phone, soft) -> (score, rules)."""
+        async with self.conn.execute("SELECT phone, soft FROM catches") as cur:
+            rows = await cur.fetchall()
+        upd = []
+        for ph, soft in rows:
+            sc, rules = fn(ph, soft)
+            upd.append((sc, "\n".join(rules), ph))
+        await self.conn.executemany("UPDATE catches SET score = ?, rules = ? WHERE phone = ?", upd)
+        await self.conn.commit()
+        return len(upd)
+
