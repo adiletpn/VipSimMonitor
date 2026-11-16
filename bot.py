@@ -157,3 +157,32 @@ async def digest_text(app) -> str:
     return "\n".join(lines)
 
 
+# ---------- команды ----------
+async def cmd_start(app, msg, args):
+    names = ", ".join(p.TITLE for p in app.parsers.values())
+    await app.bot.send_message(
+        msg["chat"]["id"],
+        f"👋 Я круглосуточно ищу красивые номера <b>{names}</b>.\n\n"
+        f"Как только найду подходящий — пришлю его сюда с кнопкой <b>«⚡ ЗАБРАТЬ НОМЕР»</b>, "
+        "она откроет оформление именно этого номера. Каждый вечер в 23:00 — итог дня.\n\n"
+        "Кнопки ниже — списки пойманных номеров по разделам, которые сейчас есть на витрине.",
+        reply_markup=STATUS_KB)
+
+
+async def cmd_status(app, msg, args):
+    await app.bot.send_message(msg["chat"]["id"], await status_text(app), reply_markup=STATUS_KB)
+
+
+async def cmd_digest(app, msg, args):
+    await app.bot.send_message(msg["chat"]["id"], await digest_text(app), reply_markup=DIGEST_KB)
+
+
+async def cmd_score(app, msg, args):
+    if not args.isdigit():
+        text = f"Сейчас порог: <b>{app.cfg.min_score}</b>. Пример: <code>/score 65</code>"
+    else:
+        await app.cfg.set_min_score(int(args))
+        text = f"✅ Теперь присылаю номера от <b>{app.cfg.min_score}</b> баллов"
+    await app.bot.send_message(msg["chat"]["id"], text)
+
+
