@@ -179,3 +179,31 @@ class Config:
                 except ValueError:
                     log.error("Битые настройки оператора %s в БД — пропускаю", name)
 
+    async def set_min_score(self, value: int) -> None:
+        self.min_score = max(0, min(100, int(value)))
+        await self._db.set_setting("min_score", str(self.min_score))
+
+    async def set_live(self, on: bool) -> None:
+        self.live = on
+        await self._db.set_setting("live", "1" if on else "0")
+
+    async def set_turbo(self, seconds: int) -> None:
+        self.turbo_until = time.time() + seconds if seconds > 0 else 0.0
+        await self._db.set_setting("turbo_until", str(self.turbo_until))
+
+    @property
+    def turbo(self) -> bool:
+        return time.time() < self.turbo_until
+
+    def merge_operator(self, name: str, patch: dict, persist: bool = True) -> dict:
+        op = self.operators[name]
+        for key, value in patch.items():
+            if key in ("headers", "cookies", "params") and isinstance(value, dict):
+                if patch.get("_replace"):
+                    op[key] = dict(value)
+                else:
+                    op[key].update(value)
+            elif key in op:
+                op[key] = value
+        return op
+
