@@ -117,3 +117,74 @@ async def soft_summary(app: App, stop: asyncio.Event) -> None:
             log.exception("Сводка по двойкам не отправлена")
 
 
+async def main() -> None:
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"),
+                        format="%(asctime)s %(levelname).1s %(name)s: %(message)s")
+
+    cfg = Config()
+    db = Database(cfg.db_path)
+    await db.connect()
+    await cfg.sync(db)
+    # Баллы уловов из прошлых версий скорера пересчитываются текущим (иначе в списках висят устаревшие оценки)
+    def _rescore(ph, soft):
+        sc, rules = score(ph)
+        return sc, rules + (doubles(ph) if soft else [])
+    log.info("Пересчитано уловов: %d", await db.rescore(_rescore))
+
+    connector = aiohttp.TCPConnector(limit=15, ttl_dns_cache=300, enable_cleanup_closed=True)
+    bot = TgBot(cfg.bot_token, connector)
+    notifier = Notifier(bot, cfg.admin_chat_id)
+    app = App(cfg, db, bot, notifier, connector)
+    app.parsers = {name: cls(cfg, db, notifier, connector) for name, cls in PARSERS.items()}
+
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, stop.set)
+
+    tasks = [asyncio.create_task(p.run(stop), name=f"parser:{n}") for n, p in app.parsers.items()]
+    tasks += [asyncio.create_task(notifier.run(stop), name="notifier"),
+              asyncio.create_task(maintenance(app, stop), name="maintenance"),
+              asyncio.create_task(pulse(app, stop), name="pulse"),
+              asyncio.create_task(digest(app, stop), name="digest"),
+              asyncio.create_task(soft_summary(app, stop), name="soft_summary")]
+    poller = asyncio.create_task(polling(app, stop), name="polling")
+    poller.add_done_callback(lambda _: stop.set())
+
+    active = [p.TITLE for p in app.parsers.values() if p.configured()]
+    notifier.push(f"🟢 <b>VIP SIM Monitor запущен</b>\nАктивны: {', '.join(active) or 'никто — настрой /update_auth'}"
+                  f"\nПорог {cfg.min_score} · БД {cfg.db_path} · RAM {ram_mb()} МБ", silent=True, total=-1)
+    log.info("Старт: операторы %s, RAM %d МБ", active, ram_mb())
+
+    await stop.wait()
+    log.info("Получен сигнал остановки — завершаюсь аккуратно")
+
+    # 1. Обрываем long-poll getUpdates и подтверждаем обработанные апдейты (без Conflict и без повторов)
+    poller.cancel()
+    # 2. Гасим парсеры и фоновые задачи
+    for t in tasks:
+        t.cancel()
+    results = await asyncio.gather(*tasks, poller, return_exceptions=True)
+    if isinstance(results[-1], Exception) and not isinstance(results[-1], asyncio.CancelledError):
+        log.error("Поллинг упал: %r", results[-1])
+    if app.tg_offset:
+        try:
+            await bot.call("getUpdates", offset=app.tg_offset, timeout=0, _http_timeout=5)
+        except (TgError, aiohttp.ClientError, asyncio.TimeoutError):
+            pass
+    # 3. Досылаем уже пойманные номера
+    await notifier.drain(timeout=5)
+    # 4. Закрываем HTTP-сессии, коннектор, бота и БД (со сбросом WAL)
+    for p in app.parsers.values():
+        await p.close()
+    await bot.close()
+    await connector.close()
+    await db.close()
+    log.info("Остановлено чисто")
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
