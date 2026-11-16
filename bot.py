@@ -186,3 +186,45 @@ async def cmd_score(app, msg, args):
     await app.bot.send_message(msg["chat"]["id"], text)
 
 
+async def cmd_turbo(app, msg, args):
+    if app.cfg.turbo:
+        await app.cfg.set_turbo(0)
+        text = "🐢 Турбо выключено"
+    else:
+        await app.cfg.set_turbo(3600)
+        text = "🚀 Турбо на 1 час: проверяю в 2 раза чаще"
+    await app.bot.send_message(msg["chat"]["id"], text)
+
+
+async def cmd_live(app, msg, args):
+    await app.cfg.set_live(not app.cfg.live)
+    app.pulse_mark = (time.time(), app.total_scanned())
+    await app.bot.send_message(msg["chat"]["id"], "💓 Тихий отчёт раз в 15 минут включён" if app.cfg.live
+                               else "🔕 Отчёты выключены")
+
+
+async def cmd_test(app, msg, args):
+    out = []
+    for raw in (args.split() or TEST_NUMBERS)[:10]:
+        d = normalize(raw)
+        if not d:
+            out.append(f"❌ {escape(raw)} — не мобильный номер Казахстана")
+            continue
+        total, rules = score(d)
+        out.append(f"<b>{fmt_human(d)}</b> → <b>{total}</b> {rank(total)}")
+        out.extend(f"  • {escape(r)}" for r in rules)
+    await app.bot.send_message(msg["chat"]["id"], "\n".join(out))
+
+
+async def cmd_backup(app, msg, args):
+    tmp = app.cfg.db_path + ".backup"
+    try:
+        await app.db.backup_to(tmp)
+        stamp = datetime.now(ASTANA_TZ).strftime("%Y%m%d_%H%M")
+        await app.bot.send_document(msg["chat"]["id"], tmp, f"vip_sim_{stamp}.db",
+                                    f"💾 Бэкап · {os.path.getsize(tmp) // 1024} КБ · RAM {ram_mb()} МБ")
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
