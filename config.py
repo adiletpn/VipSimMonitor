@@ -207,3 +207,40 @@ class Config:
                 op[key] = value
         return op
 
+    async def update_operator(self, name: str, patch: dict) -> dict:
+        op = self.merge_operator(name, patch)
+        stored = {k: op[k] for k in ("url", "method", "headers", "cookies", "params", "payload", "masks",
+                                     "prefixes", "categories_url", "number_url", "cities", "categories", "soft_prices",
+                                     "pages", "page_start", "page_size",
+                                     "warmup_url", "shop_url", "enabled")}
+        await self._db.set_setting("op:" + name, json.dumps(stored, ensure_ascii=False))
+        return op
+
+
+# ---------- разбор /update_auth ----------
+KNOWN_KEYS = frozenset(("url", "method", "headers", "cookies", "params", "payload", "masks", "prefixes",
+                        "categories_url", "number_url", "cities", "categories", "soft_prices", "pages",
+                        "page_start", "page_size", "warmup_url", "shop_url", "enabled", "_replace"))
+
+
+def _templatize(obj, flags: dict):
+    """Подставляет {page}/{offset}/{mask} вместо значений пагинации и маски в dict-подобных структурах."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            lk = str(k).lower()
+            if lk in PAGE_KEYS and isinstance(v, (int, str)) and str(v).isdigit():
+                flags["page_start"] = 0 if str(v) == "0" else 1
+                out[k] = "{page}"
+            elif lk in OFFSET_KEYS and isinstance(v, (int, str)) and str(v).isdigit():
+                out[k] = "{offset}"
+            elif lk in MASK_KEYS and isinstance(v, str):
+                out[k] = "{mask}"
+            else:
+                out[k] = _templatize(v, flags)
+        return out
+    if isinstance(obj, list):
+        return [_templatize(v, flags) for v in obj]
+    return obj
+
+
