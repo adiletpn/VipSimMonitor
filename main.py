@@ -52,3 +52,23 @@ async def _wait(stop: asyncio.Event, seconds: float) -> bool:
         return False
 
 
+async def maintenance(app: App, stop: asyncio.Event) -> None:
+    last_cleanup = 0.0
+    if await _wait(stop, 60):
+        return
+    while not stop.is_set():
+        try:
+            if time.time() - last_cleanup >= CLEANUP_EVERY:
+                deleted = await app.db.cleanup()
+                last_cleanup = time.time()
+                log.info("Автоочистка: удалено %d номеров старше 30 дней", deleted)
+            else:
+                await app.db.checkpoint()
+            gc.collect()
+            log.info("Обслуживание: RAM %d МБ, очередь %d", ram_mb(), app.notifier.queue.qsize())
+        except Exception:
+            log.exception("Ошибка обслуживания")
+        if await _wait(stop, MAINT_EVERY):
+            return
+
+
