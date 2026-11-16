@@ -304,3 +304,26 @@ def parse_curl(cmd: str) -> dict:
     return out
 
 
+def parse_auth_patch(text: str) -> dict:
+    """Принимает cURL, JSON с ключами конфига или «голый» JSON заголовков/кук."""
+    text = text.strip()
+    if text.lower().startswith("curl "):
+        return parse_curl(text)
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError("ожидался JSON-объект")
+    if data.keys() & KNOWN_KEYS:
+        return data
+    # Голый JSON: считаем заголовками; Cookie-заголовок раскладываем в куки
+    headers, cookies = {}, {}
+    for k, v in data.items():
+        if str(k).lower() == "cookie":
+            cookies.update(parse_cookie_string(str(v)))
+        else:
+            headers[str(k)] = str(v)
+    patch = {}
+    if headers:
+        patch["headers"] = headers
+    if cookies:
+        patch["cookies"] = cookies
+    return patch
