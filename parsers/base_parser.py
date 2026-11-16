@@ -342,3 +342,48 @@ class BaseParser:
                             out.setdefault(ph, None)
         return out
 
+    async def process(self, found: dict[str, int | None]) -> None:
+        scored = {ph: score(ph) for ph in found}
+        fresh = await self.db.register(self.NAME, [(ph, pr, scored[ph][0]) for ph, pr in found.items()])
+        await self.db.touch_catches(list(found))
+        self.scanned += len(found)
+        self.fresh += len(fresh)
+        cfg = self.app_cfg
+        soft_prices = self.cfg.get("soft_prices") or ()
+        soft = []
+        # Решение «присылать или нет» не зависит от того, видели ли номер раньше: после снижения
+        # порога уже просмотренные номера тоже должны прийти. Дубли отсекает таблица catches.
+        for ph, (total, rules) in scored.items():
+            price = found[ph]
+            if not price_ok(price, cfg.max_price):
+                continue
+            need = cfg.vip_min_score if (price or 0) >= 10000 else cfg.min_score
+            if total < need:
+                if price in soft_prices:
+                    d = doubles(ph)
+                    if d:
+                        soft.append((ph, total, price, rules + d))
+                continue
+            if not await self.db.add_catch(ph, self.TITLE, total, price, rules):
+                continue
+            self.caught += 1
+            text, kb = build_card(ph, self.TITLE, total, price, rules, self.number_link(ph, price))
+            self.notifier.push(text, kb, free=(price == 0), total=total)
+        if soft:
+            await self.db.add_soft(self.TITLE, soft)
+
+    # ---------- Circuit Breaker ----------
+    def _trip(self, reason: str, retry_after: str | None = None) -> float:
+        self.trips += 1
+        pause = min(600.0, 300.0 * 1.5 ** (self.trips - 1) + random.uniform(0, 60))
+        if retry_after and retry_after.isdigit():
+            pause = max(pause, min(600.0, float(retry_after)))
+        self.sleep_until = time.monotonic() + pause
+        wake = datetime.now(ASTANA_TZ) + timedelta(seconds=pause)
+        self.state = f"🔴 сон до {wake:%H:%M} ({reason})"
+        logging.getLogger(self.NAME).warning("Circuit Breaker: %s — пауза %.0f c", reason, pause)
+        if self.trips == 1:
+            self.notifier.push(f"🛡 <b>{self.TITLE}</b>: {reason} — тихий сон {pause / 60:.0f} мин, "
+                               f"остальные операторы работают.", silent=True, total=-1)
+        return pause
+
