@@ -29,3 +29,25 @@ def price_label(price: int | None) -> str:
     return f"💸 {price:,} ₸".replace(",", " ")
 
 
+def build_card(phone: str, operator_title: str, total: int, price: int | None,
+               rules: list[str], shop_url: str) -> tuple[str, dict | None]:
+    lines = [
+        f"<b>{rank(total)}</b> · <b>{total}</b>/100",
+        "",
+        f"📱 <b>{fmt_human(phone)}</b>",
+        f"📋 <code>{fmt_plain(phone)}</code>",
+        "",
+        f"📡 Оператор: <b>{escape(operator_title)}</b>",
+        f"💰 Цена: {price_label(price)}",
+        "🧮 Почему красивый:",
+        *(f"  • {escape(r)}" for r in rules),
+        "",
+        "⚡ <i>Жми кнопку → выбери eSIM → ИИН → подтверждение. 60 секунд, номера разбирают быстро.</i>",
+    ]
+    kb = None
+    if shop_url:
+        kb = make_kb([btn_url("⚡ ЗАБРАТЬ НОМЕР", shop_url)],
+                     [btn_cb("❤️ Нравится", f"fav:{phone}"), btn_cb("🗑 Не интересно", f"hide:{phone}")])
+    return "\n".join(lines), kb
+
+
