@@ -73,3 +73,33 @@ OPERATOR_DEFAULTS = {
 }
 
 
+def _default_db_path() -> str:
+    path = os.getenv("DB_PATH", "/data/vip_sim.db")
+    folder = os.path.dirname(path) or "."
+    if os.path.isdir(folder) and os.access(folder, os.W_OK):
+        return path
+    log.warning("Папка %s недоступна (Volume не смонтирован?) — использую ./vip_sim.db", folder)
+    return "./vip_sim.db"
+
+
+def _json_env(name: str, default):
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except ValueError:
+        log.error("Переменная %s содержит невалидный JSON — игнорирую", name)
+        return default
+
+
+def parse_cookie_string(raw: str) -> dict:
+    out = {}
+    for part in raw.split(";"):
+        if "=" in part:
+            k, v = part.split("=", 1)
+            if k.strip():
+                out[k.strip()] = v.strip()
+    return out
+
+
