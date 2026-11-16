@@ -70,3 +70,21 @@ def _fill(obj, ctx: dict):
     return obj
 
 
+def _to_price(v) -> int | None:
+    if isinstance(v, bool) or v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return int(v)
+    if isinstance(v, str):
+        digits = re.sub(r"[^\d.,]", "", v).replace(",", ".")
+        try:
+            return int(float(digits)) if digits else None
+        except ValueError:
+            return None
+    if isinstance(v, dict):
+        for k in ("value", "amount", "price", "sum", "current"):
+            if k in v:
+                return _to_price(v[k])
+    return None
+
+
