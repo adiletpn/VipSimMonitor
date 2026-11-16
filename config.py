@@ -244,3 +244,63 @@ def _templatize(obj, flags: dict):
     return obj
 
 
+def parse_curl(cmd: str) -> dict:
+    """Превращает «Copy as cURL (bash)» из DevTools в конфиг оператора."""
+    cmd = cmd.replace("\\\n", " ").replace("$'", "'").strip()
+    tokens = shlex.split(cmd)
+    url, method, data = "", None, None
+    headers, cookies = {}, {}
+    i = 1
+    while i < len(tokens):
+        t = tokens[i]
+        nxt = tokens[i + 1] if i + 1 < len(tokens) else ""
+        if t in ("-X", "--request"):
+            method, i = nxt.upper(), i + 2
+        elif t in ("-H", "--header"):
+            if ":" in nxt:
+                k, v = nxt.split(":", 1)
+                if k.strip().lower() == "cookie":
+                    cookies.update(parse_cookie_string(v))
+                elif k.strip().lower() not in SKIP_HEADERS:
+                    headers[k.strip()] = v.strip()
+            i += 2
+        elif t in ("-b", "--cookie"):
+            cookies.update(parse_cookie_string(nxt))
+            i += 2
+        elif t in ("-d", "--data", "--data-raw", "--data-binary", "--data-ascii"):
+            data, i = nxt, i + 2
+        elif t in ("-A", "--user-agent"):
+            headers["User-Agent"], i = nxt, i + 2
+        elif t.startswith("-"):
+            i += 1
+        else:
+            if not url:
+                url = t
+            i += 1
+    if not url:
+        raise ValueError("в cURL не найден URL")
+    flags = {}
+    parts = urlsplit(url)
+    params = _templatize(dict(parse_qsl(parts.query, keep_blank_values=True)), flags)
+    url = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    payload = None
+    if data is not None:
+        try:
+            payload = _templatize(json.loads(data), flags)
+        except ValueError:
+            payload = _templatize(dict(parse_qsl(data, keep_blank_values=True)), flags)
+            headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+    out = {
+        "url": url,
+        "method": method or ("POST" if data is not None else "GET"),
+        "headers": headers,
+        "cookies": cookies,
+        "params": params,
+        "payload": payload,
+        "warmup_url": f"{parts.scheme}://{parts.netloc}/",
+        "_replace": True,
+    }
+    out.update(flags)
+    return out
+
+
