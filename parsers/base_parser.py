@@ -310,3 +310,35 @@ class BaseParser:
             return self.cat_prices[cat]
         return None
 
+    def extract(self, body: bytes) -> dict[str, int | None]:
+        """Универсальный разбор JSON любой вложенности (или HTML/текста): {номер: цена|None}."""
+        text = body.decode("utf-8", "replace")
+        out: dict[str, int | None] = {}
+        try:
+            data = json.loads(text)
+        except ValueError:
+            for m in _TEXT_PHONE.findall(text):
+                ph = normalize(m)
+                if ph:
+                    out.setdefault(ph, None)
+            return out
+        stack = [data]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                ph = self._phone_from_dict(node)
+                if ph:
+                    pr = self._price_from_dict(node)
+                    old = out.get(ph)
+                    out[ph] = pr if old is None else (old if pr is None else min(old, pr))
+                stack.extend(v for v in node.values() if isinstance(v, (dict, list)))
+            elif isinstance(node, list):
+                for v in node:
+                    if isinstance(v, (dict, list)):
+                        stack.append(v)
+                    elif isinstance(v, (str, int)) and not isinstance(v, bool):
+                        ph = normalize(v)
+                        if ph:
+                            out.setdefault(ph, None)
+        return out
+
