@@ -122,3 +122,38 @@ async def section_view(app, key: str, page: int = 0) -> tuple[str, dict]:
     return "\n".join(lines), {"inline_keyboard": keyboard}
 
 
+async def favs_view(app) -> tuple[str, dict]:
+    rows = await app.db.favorites()
+    lines = ["<b>❤️ Избранное</b>", ""]
+    if not rows:
+        lines.append("Пусто. Жми «❤️ Нравится» на карточке или 🤍 в списках.")
+    fresh = time.time() - 12 * 3600
+    for ph, op, sc, pr, seen, fav, soft in rows:
+        state = f"✅ на витрине ({_ago(seen)})" if seen >= fresh else "⚠️ давно не видел — возможно, уже продан"
+        lines.append(f"{_num_link(app, ph, op, pr)} · {escape(op)} · {state}")
+    keyboard = _fav_rows(rows, "favs") + [*_MENU_ROWS]
+    return "\n".join(lines), {"inline_keyboard": keyboard}
+
+
+async def digest_text(app) -> str:
+    """Итог дня: всё пойманное, что ещё висит на витрине, по разделам."""
+    lines = ["<b>🌙 Итог дня</b> — пойманные номера, которые сейчас есть на витрине", ""]
+    total = 0
+    for title, lo, hi in SECTIONS.values():
+        rows = await app.db.available(lo, hi, _need(app, lo), hours=24, limit=10)
+        if not rows:
+            continue
+        n = await app.db.count_available(lo, hi, _need(app, lo), hours=24)
+        total += n
+        lines.append(f"<b>{title}</b> — {n} шт.")
+        lines.extend(f"{'❤️ ' if fav else ''}{_num_link(app, ph, op, pr)} · "
+                     f"{'двойки' if soft and sc < _need(app, lo) else f'<b>{sc}</b>'} · {escape(op)}"
+                     for ph, op, sc, pr, _, fav, soft in rows)
+        if n > len(rows):
+            lines.append(f"… и ещё {n - len(rows)} — кнопка раздела ниже")
+        lines.append("")
+    if not total:
+        lines.append("За сегодня ничего достойного не поймал — охота продолжается.")
+    return "\n".join(lines)
+
+
