@@ -76,3 +76,49 @@ def _need(app, price_from: int) -> int:
     return app.cfg.vip_min_score if price_from >= 10000 else app.cfg.min_score
 
 
+async def status_text(app) -> str:
+    s = await app.db.stats()
+    lines = [
+        "<b>📊 Статус</b>",
+        f"Присылаю номера до {app.cfg.max_price} ₸ от <b>{app.cfg.min_score}</b> баллов"
+        + (" · 🚀 турбо" if app.cfg.turbo else ""),
+        "",
+        f"Сегодня проверено: <b>{s['scanned_day']}</b> номеров, найдено: <b>{s['catches_day']}</b>",
+        f"За всё время найдено: <b>{s['catches_all']}</b>",
+        "",
+    ]
+    for p in app.parsers.values():
+        lines.append(f"{escape(p.TITLE)} — {escape(_state(p))} · проверено {p.scanned}")
+    best = await app.db.best_available(app.cfg.min_score)
+    if best:
+        lines.append("\n<b>🏆 Лучшие, что сейчас на витрине</b> (нажми — откроется оформление):")
+        for ph, op, sc, pr, seen in best:
+            price = "0 ₸" if not pr else f"{pr:,} ₸".replace(",", " ")
+            lines.append(f"{_num_link(app, ph, op, pr)} · <b>{sc}</b> · {escape(op)} · {price}")
+    return "\n".join(lines)
+
+
+async def section_view(app, key: str, page: int = 0) -> tuple[str, dict]:
+    title, lo, hi = SECTIONS[key]
+    need = _need(app, lo)
+    total = await app.db.count_available(lo, hi, need)
+    rows = await app.db.available(lo, hi, need, limit=PAGE, offset=page * PAGE)
+    soft_note = " (+ номера с двойками)" if key == "cool" else ""
+    lines = [f"<b>{title}</b> · от {_need(app, lo)} баллов{soft_note}",
+             f"<i>Доступно на витрине (видел за 12 ч): {total}</i>", ""]
+    if not rows:
+        lines.append("Пока пусто — как только поймаю, появятся здесь.")
+    for i, (ph, op, sc, pr, seen, fav, soft) in enumerate(rows, page * PAGE + 1):
+        mark = "двойки" if soft and sc < _need(app, lo) else f"<b>{sc}</b>"
+        lines.append(f"{i}. {'❤️ ' if fav else ''}{_num_link(app, ph, op, pr)} · {mark} · {escape(op)} · {_ago(seen)}")
+    lines.append("\nНажми на номер — откроется оформление. Кнопка 🤍 с номером — в избранное.")
+    nav = []
+    if page > 0:
+        nav.append(btn_cb("◀ Назад", f"list:{key}:{page - 1}"))
+    if (page + 1) * PAGE < total:
+        nav.append(btn_cb("Ещё ▶", f"list:{key}:{page + 1}"))
+    keyboard = _fav_rows(rows, f"{key}.{page}") + ([nav] if nav else []) + \
+        [[btn_cb("🗑 Очистить этот раздел", f"clear:{key}")], *_MENU_ROWS]
+    return "\n".join(lines), {"inline_keyboard": keyboard}
+
+
