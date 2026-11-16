@@ -118,3 +118,33 @@ class Database:
             await self.conn.commit()
         return {f[0] for f in fresh}
 
+    async def add_catch(self, phone: str, operator: str, score: int, price: int | None, rules: list[str]) -> bool:
+        """True — номер записан впервые (его ещё не присылали)."""
+        now = int(time.time())
+        cur = await self.conn.execute(
+            "INSERT OR IGNORE INTO catches(phone, operator, score, price, rules, ts, last_seen) "
+            "VALUES(?,?,?,?,?,?,?)", (phone, operator, score, price, "\n".join(rules), now, now))
+        added = cur.rowcount == 1
+        await cur.close()
+        await self.conn.commit()
+        return added
+
+    async def add_soft(self, operator: str, items: list[tuple[str, int, int | None, list[str]]]) -> int:
+        """Пачка «мягких» находок [(phone, score, price, rules)] одной транзакцией. Возвращает число новых."""
+        if not items:
+            return 0
+        now = int(time.time())
+        before = self.conn.total_changes
+        await self.conn.executemany(
+            "INSERT OR IGNORE INTO catches(phone, operator, score, price, rules, ts, last_seen, soft) "
+            "VALUES(?,?,?,?,?,?,?,1)", [(ph, operator, sc, pr, "\n".join(r), now, now) for ph, sc, pr, r in items])
+        await self.conn.commit()
+        return self.conn.total_changes - before
+
+    async def soft_since(self, ts: int) -> list:
+        """[(price, count)] новых «мягких» находок с момента ts."""
+        async with self.conn.execute(
+                "SELECT price, COUNT(*) FROM catches WHERE soft = 1 AND hidden = 0 AND ts >= ? GROUP BY price",
+                (ts,)) as cur:
+            return await cur.fetchall()
+
