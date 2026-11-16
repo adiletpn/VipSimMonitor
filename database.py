@@ -43,3 +43,31 @@ CREATE TABLE IF NOT EXISTS settings (
 """
 
 
+class Database:
+    __slots__ = ("path", "conn", "_lock")
+
+    def __init__(self, path: str):
+        self.path = path
+        self.conn: aiosqlite.Connection | None = None
+        self._lock = asyncio.Lock()
+
+    async def connect(self) -> None:
+        self.conn = await aiosqlite.connect(self.path)
+        for pragma in ("journal_mode = WAL", "synchronous = NORMAL", "cache_size = -2000",
+                       "temp_store = MEMORY", "busy_timeout = 5000", "mmap_size = 0"):
+            await self.conn.execute("PRAGMA " + pragma)
+        await self.conn.executescript(SCHEMA)
+        async with self.conn.execute("PRAGMA table_info(catches)") as cur:
+            cols = {r[1] for r in await cur.fetchall()}
+        if "last_seen" not in cols:  # миграция: когда номер последний раз был на витрине
+            await self.conn.execute("ALTER TABLE catches ADD COLUMN last_seen INTEGER")
+            await self.conn.execute("UPDATE catches SET last_seen = ts")
+        if "hidden" not in cols:  # миграция: номер скрыт кнопкой «Не интересно»
+            await self.conn.execute("ALTER TABLE catches ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
+        if "fav" not in cols:  # миграция: кнопка «❤️ Нравится»
+            await self.conn.execute("ALTER TABLE catches ADD COLUMN fav INTEGER NOT NULL DEFAULT 0")
+        if "soft" not in cols:  # миграция: «мягкий» улов (двойки в Cool) — без отдельного уведомления
+            await self.conn.execute("ALTER TABLE catches ADD COLUMN soft INTEGER NOT NULL DEFAULT 0")
+        await self.conn.commit()
+        log.info("БД открыта: %s", os.path.abspath(self.path))
+
