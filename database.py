@@ -71,3 +71,50 @@ class Database:
         await self.conn.commit()
         log.info("БД открыта: %s", os.path.abspath(self.path))
 
+    async def close(self) -> None:
+        if self.conn is None:
+            return
+        try:
+            await self.conn.commit()
+            await self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            await self.conn.close()
+            self.conn = None
+            log.info("БД закрыта, WAL сброшен")
+
+    # ---------- settings ----------
+    async def get_settings(self) -> dict:
+        async with self.conn.execute("SELECT key, value FROM settings") as cur:
+            return {k: v for k, v in await cur.fetchall()}
+
+    async def set_setting(self, key: str, value: str) -> None:
+        await self.conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+        await self.conn.commit()
+
+    # ---------- номера ----------
+    async def register(self, operator: str, items: list[tuple[str, int | None, int]]) -> set[str]:
+        """items: [(phone, price, score)]. Пишет в историю, возвращает множество впервые увиденных номеров."""
+        if not items:
+            return set()
+        now = int(time.time())
+        async with self._lock:
+            phones = [it[0] for it in items]
+            known = set()
+            for i in range(0, len(phones), 500):
+                chunk = phones[i:i + 500]
+                sql = f"SELECT phone FROM seen WHERE phone IN ({','.join('?' * len(chunk))})"
+                async with self.conn.execute(sql, chunk) as cur:
+                    known.update(r[0] for r in await cur.fetchall())
+            fresh = [(ph, operator, sc, pr, now) for ph, pr, sc in items if ph not in known]
+            if fresh:
+                await self.conn.executemany(
+                    "INSERT OR IGNORE INTO seen(phone, operator, score, price, ts) VALUES(?,?,?,?,?)", fresh)
+            await self.conn.execute(
+                "INSERT INTO stats(day, operator, scanned, fresh) VALUES(date('now', '+5 hours'), ?, ?, ?) "
+                "ON CONFLICT(day, operator) DO UPDATE SET scanned = scanned + excluded.scanned, "
+                "fresh = fresh + excluded.fresh", (operator, len(items), len(fresh)))
+            await self.conn.commit()
+        return {f[0] for f in fresh}
+
