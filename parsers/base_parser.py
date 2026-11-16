@@ -162,3 +162,33 @@ class BaseParser:
                 "{offset}": (page - int(c.get("page_start", 1))) * size, "{size}": size,
                 "{city}": random.choice(cities), "{uuid}": self.device_id, "{category}": category}
 
+    def number_link(self, phone: str, price: int | None) -> str:
+        tpl = self.cfg.get("number_url")
+        if not tpl:
+            return self.shop_url
+        return tpl.replace("{phone}", phone).replace("{price}", str(price or 0))
+
+    def configured(self) -> bool:
+        return bool(self.cfg.get("enabled") and self.cfg.get("url"))
+
+    def next_delay(self) -> float:
+        """Человеческий джиттер: турбо 10–15 c, ночь (01–05 Астана) 45–60 c, обычно 20–35 c."""
+        if self.app_cfg.turbo:
+            return random.uniform(10.0, 15.0)
+        if 1 <= astana_hour() < 5:
+            return random.uniform(45.0, 60.0)
+        return random.uniform(20.0, 35.0)
+
+    def _build_targets(self) -> list[tuple[str, str, int, str]]:
+        c = self.cfg
+        blob = json.dumps([c.get("url"), c.get("params"), c.get("payload")], ensure_ascii=False)
+        masks = list(c.get("masks") or [""]) if "{mask}" in blob else [""]
+        prefixes = list(c.get("prefixes") or [""]) if "{prefix}" in blob else [""]
+        cats = list(c.get("categories") or [""]) if "{category}" in blob else [""]
+        random.shuffle(masks)
+        start = int(c.get("page_start", 1))
+        pages = range(start, start + max(1, int(c.get("pages", 1))))
+        if "{page}" not in blob and "{offset}" not in blob:
+            pages = range(start, start + 1)
+        return [(pr, m, p, cat) for m in masks for cat in cats for pr in prefixes for p in pages]
+
