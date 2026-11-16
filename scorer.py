@@ -102,3 +102,33 @@ def score(d: str) -> tuple[int, list[str]]:
     return min(total, 100), rules
 
 
+def doubles(d: str) -> list[str]:
+    """«Мягкие» узоры Cool (по выбору владельца): двойка в середине (xxx-22-xx) или в конце (xxx-xx-22).
+    Двойка в блоке (699) отмечается дополнительно, если есть одна из пар выше."""
+    q, x, y = d[3:6], d[6:8], d[8:]
+    out = []
+    if y[0] == y[1]:
+        out.append(f"Двойка в конце: {x}-{y}")
+    if x[0] == x[1]:
+        out.append(f"Двойка в середине: {x}-{y}")
+    if out and (q[0] == q[1] or q[1] == q[2]):
+        out.append(f"Двойка в блоке: {q}")
+    return out
+
+
+def price_ok(price: int | None, max_price: int) -> bool:
+    """0 ₸ / неизвестно — пропускаем, платные до MAX_PRICE — пропускаем, дороже — отсекаем."""
+    return price is None or price <= max_price
+
+
+def rank(total: int) -> str:
+    if total >= 90:
+        return "👑 БЛАТ (90+)"
+    if total >= 65:
+        return "🔥 ПОЧТИ БЛАТ (65+)"
+    if total >= 55:
+        return "💎 ПОЛУБЛАТ (55+)"
+    return "📱 НОМЕР ПО ПОРОГУ"
+
+
+TEST_NUMBERS = ("7077077777", "7071234321", "7470007070", "7779994545", "7076707166")
