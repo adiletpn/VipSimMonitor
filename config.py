@@ -103,3 +103,41 @@ def parse_cookie_string(raw: str) -> dict:
     return out
 
 
+def _env_operator(name: str) -> dict:
+    p = name.upper() + "_"
+    cookies = os.getenv(p + "COOKIES", "").strip()
+    if cookies.startswith("{"):
+        cookies = _json_env(p + "COOKIES", {})
+    else:
+        cookies = parse_cookie_string(cookies)
+    masks = os.getenv(p + "MASKS")
+    prefixes = os.getenv(p + "PREFIXES")
+    op = {
+        "url": os.getenv(p + "URL", "").strip(),
+        "method": os.getenv(p + "METHOD", "GET").strip().upper(),
+        "headers": _json_env(p + "HEADERS", {}),
+        "cookies": cookies,
+        "params": _json_env(p + "PARAMS", {}),
+        "payload": _json_env(p + "PAYLOAD", None),
+        "masks": [m.strip() for m in masks.split(",")] if masks is not None else list(DEFAULT_MASKS),
+        "prefixes": [x.strip() for x in prefixes.split(",") if x.strip()] if prefixes else [],
+        "categories_url": os.getenv(p + "CATEGORIES_URL", "").strip(),
+        "number_url": os.getenv(p + "NUMBER_URL", "").strip(),
+        "cities": [],
+        "categories": [],
+        "soft_prices": [],
+        "pages": int(os.getenv(p + "PAGES", "3")),
+        "page_start": int(os.getenv(p + "PAGE_START", "1")),
+        "page_size": int(os.getenv(p + "PAGE_SIZE", "50")),
+        "warmup_url": os.getenv(p + "WARMUP_URL", "").strip(),
+        "shop_url": os.getenv(p + "SHOP_URL", "").strip(),
+        "enabled": os.getenv(p + "ENABLED", "1") not in ("0", "false", "False"),
+    }
+    if not op["url"] and name in OPERATOR_DEFAULTS:  # ENV не задан — берём встроенный рабочий конфиг
+        for k, v in OPERATOR_DEFAULTS[name].items():
+            if (k == "masks" and masks is not None) or (k == "prefixes" and prefixes):
+                continue
+            op[k] = v
+    return op
+
+
