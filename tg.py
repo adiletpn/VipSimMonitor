@@ -63,3 +63,29 @@ class TgBot:
                                parse_mode="HTML", reply_markup=reply_markup,
                                link_preview_options={"is_disabled": True})
 
+    async def delete_message(self, chat_id: int, message_id: int):
+        return await self.call("deleteMessage", chat_id=chat_id, message_id=message_id)
+
+    async def answer_callback(self, callback_id: str, text: str | None = None):
+        return await self.call("answerCallbackQuery", callback_query_id=callback_id, text=text)
+
+    async def send_document(self, chat_id: int, path: str, filename: str, caption: str = ""):
+        with open(path, "rb") as f:
+            form = aiohttp.FormData()
+            form.add_field("chat_id", str(chat_id))
+            form.add_field("caption", caption)
+            form.add_field("document", f, filename=filename, content_type="application/octet-stream")
+            return await self.call("sendDocument", _form=form, _http_timeout=120)
+
+    async def download(self, file_id: str, limit: int) -> bytes:
+        info = await self.call("getFile", file_id=file_id)
+        url = f"{API_URL}/file/bot{self.token}/{info['file_path']}"
+        async with self.session.get(url) as resp:
+            data = await resp.content.read(limit + 1)
+        if len(data) > limit:
+            raise TgError("файл слишком большой")
+        return data
+
+    async def close(self) -> None:
+        if not self.session.closed:
+            await self.session.close()
