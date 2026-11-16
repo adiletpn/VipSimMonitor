@@ -192,3 +192,25 @@ class BaseParser:
             pages = range(start, start + 1)
         return [(pr, m, p, cat) for m in masks for cat in cats for pr in prefixes for p in pages]
 
+    def _next_target(self) -> tuple[str, str, int, str]:
+        if self._idx >= len(self._targets):
+            if self._targets:
+                gc.collect()  # полный круг масок/страниц пройден — подчищаем память
+            self._targets = self._build_targets()
+            self._idx = 0
+        t = self._targets[self._idx]
+        self._idx += 1
+        return t
+
+    async def _ensure_session(self) -> aiohttp.ClientSession:
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession(
+                connector=self.connector, connector_owner=False,
+                cookie_jar=aiohttp.CookieJar(unsafe=True),
+                timeout=aiohttp.ClientTimeout(total=25, connect=10))
+        return self.session
+
+    async def close(self) -> None:
+        if self.session and not self.session.closed:
+            await self.session.close()
+
