@@ -148,3 +148,38 @@ class Database:
                 (ts,)) as cur:
             return await cur.fetchall()
 
+    async def toggle_fav(self, phone: str) -> bool:
+        await self.conn.execute("UPDATE catches SET fav = 1 - fav, hidden = 0 WHERE phone = ?", (phone,))
+        await self.conn.commit()
+        async with self.conn.execute("SELECT fav FROM catches WHERE phone = ?", (phone,)) as cur:
+            row = await cur.fetchone()
+        return bool(row and row[0])
+
+    async def favorites(self, limit: int = 40) -> list:
+        async with self.conn.execute(
+                "SELECT phone, operator, score, price, last_seen, fav, soft FROM catches WHERE fav = 1 "
+                "ORDER BY last_seen DESC LIMIT ?", (limit,)) as cur:
+            return await cur.fetchall()
+
+    async def touch_catches(self, phones: list[str]) -> None:
+        """Номер снова был в выдаче витрины — значит, пока доступен."""
+        if not phones:
+            return
+        await self.conn.execute(
+            f"UPDATE catches SET last_seen = ? WHERE phone IN ({','.join('?' * len(phones))})",
+            [int(time.time()), *phones])
+        await self.conn.commit()
+
+    _AVAIL = ("FROM catches WHERE price BETWEEN ? AND ? AND last_seen >= ? AND hidden = 0 "
+              "AND (score >= ? OR soft = 1 OR fav = 1)")
+
+    async def available(self, price_from: int, price_to: int, min_score: int, hours: int = 12, limit: int = 30,
+                        offset: int = 0) -> list:
+        """Пойманные номера в ценовом диапазоне, которые были на витрине за последние N часов и проходят
+        текущий порог (или «мягкие»/избранные). Строки: (phone, operator, score, price, last_seen, fav, soft)."""
+        async with self.conn.execute(
+                "SELECT phone, operator, score, price, last_seen, fav, soft " + self._AVAIL +
+                " ORDER BY soft ASC, score DESC, last_seen DESC LIMIT ? OFFSET ?",
+                (price_from, price_to, int(time.time()) - hours * 3600, min_score, limit, offset)) as cur:
+            return await cur.fetchall()
+
