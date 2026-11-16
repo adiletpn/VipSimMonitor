@@ -25,3 +25,30 @@ MAINT_EVERY = 10 * 60
 CLEANUP_EVERY = 24 * 3600
 
 
+class App:
+    __slots__ = ("cfg", "db", "bot", "notifier", "parsers", "connector", "started", "pulse_mark", "tg_offset")
+
+    def __init__(self, cfg, db, bot, notifier, connector):
+        self.cfg = cfg
+        self.db = db
+        self.bot = bot
+        self.notifier = notifier
+        self.connector = connector
+        self.parsers = {}
+        self.started = time.time()
+        self.pulse_mark = (time.time(), 0)
+        self.tg_offset: int | None = None
+
+    def total_scanned(self) -> int:
+        return sum(p.scanned for p in self.parsers.values())
+
+
+async def _wait(stop: asyncio.Event, seconds: float) -> bool:
+    """True — пора выходить."""
+    try:
+        await asyncio.wait_for(stop.wait(), timeout=seconds)
+        return True
+    except asyncio.TimeoutError:
+        return False
+
+
