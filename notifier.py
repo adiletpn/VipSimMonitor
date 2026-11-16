@@ -51,3 +51,37 @@ def build_card(phone: str, operator_title: str, total: int, price: int | None,
     return "\n".join(lines), kb
 
 
+class Notifier:
+    __slots__ = ("bot", "chat_id", "queue", "_seq", "sent", "dropped")
+
+    def __init__(self, bot: TgBot, chat_id: int, maxsize: int = 300):
+        self.bot = bot
+        self.chat_id = chat_id
+        self.queue: asyncio.PriorityQueue = asyncio.PriorityQueue(maxsize=maxsize)
+        self._seq = itertools.count()
+        self.sent = 0
+        self.dropped = 0
+
+    def push(self, text: str, kb=None, free: bool = False, total: int = 0, silent: bool = False) -> None:
+        """Бесплатные и самые дорогие по баллам уходят первыми."""
+        item = ((0 if free else 1), -total, next(self._seq), text, kb, silent)
+        try:
+            self.queue.put_nowait(item)
+        except asyncio.QueueFull:
+            self.dropped += 1
+            log.warning("Очередь уведомлений переполнена — сообщение отброшено")
+
+    async def _send(self, text: str, kb, silent: bool) -> None:
+        for attempt in range(5):
+            try:
+                await self.bot.send_message(self.chat_id, text, reply_markup=kb, silent=silent)
+                self.sent += 1
+                return
+            except RetryAfter as e:
+                log.warning("Флуд-лимит Telegram: жду %s c", e.retry_after)
+                await asyncio.sleep(e.retry_after + 1)
+            except (TgError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+                log.error("Ошибка Telegram API (попытка %d): %s", attempt + 1, e)
+                await asyncio.sleep(2 * (attempt + 1))
+        self.dropped += 1
+
