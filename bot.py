@@ -268,3 +268,14 @@ COMMANDS = {
 }
 
 
+# ---------- кнопки ----------
+async def _edit_or_send(app, chat: int, mid: int, text: str, keyboard: dict, send: bool = True) -> None:
+    try:
+        await app.bot.edit_message_text(chat, mid, text, reply_markup=keyboard)
+    except TgError as e:
+        if "not modified" in str(e):
+            return
+        if send:
+            await app.bot.send_message(chat, text, reply_markup=keyboard)
+
+
