@@ -141,3 +141,41 @@ def _env_operator(name: str) -> dict:
     return op
 
 
+class Config:
+    __slots__ = ("bot_token", "admin_chat_id", "db_path", "min_score", "vip_min_score", "max_price", "proxy_url",
+                 "refresh_every", "live", "turbo_until", "operators", "_db")
+
+    def __init__(self):
+        self.bot_token = os.getenv("BOT_TOKEN", "").strip()
+        self.admin_chat_id = int(os.getenv("ADMIN_CHAT_ID", "0") or 0)
+        self.db_path = _default_db_path()
+        self.min_score = int(os.getenv("MIN_SCORE", "55"))
+        self.max_price = int(os.getenv("MAX_PRICE", "5500"))
+        # Дорогие номера (от 10 000 ₸, VIP) присылаем только если они действительно «чёткие»
+        self.vip_min_score = int(os.getenv("VIP_MIN_SCORE", "65"))
+        self.proxy_url = os.getenv("PROXY_URL", "").strip() or None
+        self.refresh_every = int(os.getenv("REFRESH_EVERY", "2700"))  # прогрев кук раз в 45 минут
+        self.live = False
+        self.turbo_until = 0.0
+        self.operators = {name: _env_operator(name) for name in OPERATORS}
+        self._db = None
+        if not self.bot_token or not self.admin_chat_id:
+            raise SystemExit("Не заданы BOT_TOKEN и/или ADMIN_CHAT_ID")
+
+    # ---------- синхронизация с SQLite ----------
+    async def sync(self, db) -> None:
+        """Накладывает сохранённые через бота настройки поверх значений из окружения."""
+        self._db = db
+        s = await db.get_settings()
+        if "min_score" in s:
+            self.min_score = int(s["min_score"])
+        self.live = s.get("live") == "1"
+        self.turbo_until = float(s.get("turbo_until", 0) or 0)
+        for name in OPERATORS:
+            raw = s.get("op:" + name)
+            if raw:
+                try:
+                    self.merge_operator(name, json.loads(raw), persist=False)
+                except ValueError:
+                    log.error("Битые настройки оператора %s в БД — пропускаю", name)
+
