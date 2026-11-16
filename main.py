@@ -72,3 +72,48 @@ async def maintenance(app: App, stop: asyncio.Event) -> None:
             return
 
 
+async def pulse(app: App, stop: asyncio.Event) -> None:
+    while not await _wait(stop, 30):
+        ts, scanned = app.pulse_mark
+        if not app.cfg.live or time.time() - ts < PULSE_EVERY:
+            continue
+        now_scanned = app.total_scanned()
+        minutes = max(1e-6, (time.time() - ts) / 60)
+        delta = now_scanned - scanned
+        app.pulse_mark = (time.time(), now_scanned)
+        app.notifier.push(f"💓 <b>Пульс</b>: за {minutes:.0f} мин просеяно {delta} номеров "
+                          f"({delta / minutes:.1f}/мин)\n\n{await status_text(app)}", silent=True, total=-1)
+
+
+async def digest(app: App, stop: asyncio.Event) -> None:
+    """Раз в день (DIGEST_HOUR по Астане, по умолчанию 23:00) присылает итог дня."""
+    hour = int(os.getenv("DIGEST_HOUR", "23"))
+    while not await _wait(stop, 60):
+        now = datetime.now(ASTANA_TZ)
+        today = now.strftime("%Y-%m-%d")
+        if now.hour != hour or (await app.db.get_settings()).get("digest_day") == today:
+            continue
+        try:
+            await app.bot.send_message(app.cfg.admin_chat_id, await digest_text(app), reply_markup=DIGEST_KB)
+            await app.db.set_setting("digest_day", today)
+        except Exception:
+            log.exception("Не удалось отправить итог дня")
+
+
+async def soft_summary(app: App, stop: asyncio.Event) -> None:
+    """Раз в час — одно сообщение о новых номерах с двойками в Cool (вместо десятков отдельных карточек)."""
+    since = int(time.time())
+    while not await _wait(stop, 3600):
+        now = int(time.time())
+        try:
+            rows = await app.db.soft_since(since)
+            since = now
+            n = sum(c for _, c in rows)
+            if n:
+                app.notifier.push(f"💎 <b>За час в Cool +{n} новых номеров с двойками</b>\n"
+                                  "(двойка в конце / в середине / в блоке). Список — по кнопке, понравившиеся "
+                                  "отмечай 🤍.", kb([btn_cb("💎 Открыть Cool", "list:cool:0")]), total=-1)
+        except Exception:
+            log.exception("Сводка по двойкам не отправлена")
+
+
