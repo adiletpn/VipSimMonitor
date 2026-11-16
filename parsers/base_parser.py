@@ -118,3 +118,47 @@ class BaseParser:
         self.cat_prices: dict = {}  # id категории -> цена (если API отдаёт номер без цены)
         self.device_id = str(uuid.uuid4())  # постоянный «ID устройства», как у реального браузера
 
+    # ---------- служебное ----------
+    @property
+    def shop_url(self) -> str:
+        return self.cfg.get("shop_url") or self.HOME
+
+    def _origin(self) -> str:
+        src = self.cfg.get("warmup_url") or self.shop_url or self.cfg.get("url", "")
+        p = urlsplit(src)
+        return f"{p.scheme}://{p.netloc}" if p.netloc else ""
+
+    def _base_headers(self, navigate: bool) -> dict:
+        origin = self._origin()
+        h = {
+            "User-Agent": self.ua,
+            "Accept-Language": "ru-RU,ru;q=0.9,kk;q=0.8",
+            "Referer": (self.shop_url or origin + "/"),
+        }
+        if navigate:
+            h.update({"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,"
+                                "image/webp,*/*;q=0.8",
+                      "Upgrade-Insecure-Requests": "1", "Sec-Fetch-Dest": "document",
+                      "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "none", "Sec-Fetch-User": "?1"})
+        else:
+            h.update({"Accept": "application/json, text/plain, */*", "Origin": origin,
+                      "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-origin"})
+        return h
+
+    def _api_headers(self, ctx: dict | None = None) -> dict:
+        """Браузерные заголовки + заголовки оператора с подстановкой {city}/{uuid}."""
+        if ctx is None:
+            ctx = self._ctx("", "", int(self.cfg.get("page_start", 1)))
+        headers = self._base_headers(False)
+        headers.update({k: str(_fill(v, ctx)) for k, v in (self.cfg.get("headers") or {}).items()
+                        if not k.startswith(":")})
+        return headers
+
+    def _ctx(self, prefix: str, mask: str, page: int, category: str = "") -> dict:
+        c = self.cfg
+        size = int(c.get("page_size", 50))
+        cities = c.get("cities") or [""]
+        return {"{prefix}": prefix, "{mask}": mask, "{page}": page,
+                "{offset}": (page - int(c.get("page_start", 1))) * size, "{size}": size,
+                "{city}": random.choice(cities), "{uuid}": self.device_id, "{category}": category}
+
