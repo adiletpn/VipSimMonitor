@@ -39,3 +39,34 @@ USER_AGENTS = (
 )
 
 
+class Blocked(Exception):
+    def __init__(self, status: int, retry_after: str | None):
+        super().__init__(f"HTTP {status}")
+        self.status = status
+        self.retry_after = retry_after
+
+
+class HttpError(Exception):
+    pass
+
+
+def astana_hour() -> int:
+    return datetime.now(ASTANA_TZ).hour
+
+
+def _fill(obj, ctx: dict):
+    """Рекурсивная подстановка {mask}/{page}/{offset}/{size}. Строка ровно '{page}' становится int."""
+    if isinstance(obj, str):
+        if obj in ctx:
+            return ctx[obj]
+        if "{" in obj:
+            for k, v in ctx.items():
+                obj = obj.replace(k, str(v))
+        return obj
+    if isinstance(obj, dict):
+        return {k: _fill(v, ctx) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_fill(v, ctx) for v in obj]
+    return obj
+
+
