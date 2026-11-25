@@ -36,13 +36,16 @@ def _eshop(domain: str, operator_type: str, prefixes: list) -> dict:
                    "96", "85", "87", "72", "88", "89", "90", "70"],
         "params": {"prefix": "{prefix}", "category": "{category}", "mask": "{mask}"},
         # -1 = «Обычный» (0 ₸), 101 = «Cool» (4 500 ₸). VIP (100, 14 500 ₸) выключен по решению владельца.
-        "categories": ["101"],  # только Cool: в бесплатных ТОП-номеров нет (проверено прицельным поиском)
+        # Cool (101) — полный перебор; VIP (100, 14 500 ₸) — прицельно: тройки/четвёрки и блоки под код.
+        # Бесплатные не проверяем: прицельный поиск не нашёл там ни одного подходящего номера.
+        "categories": ["101", "100"],
         "prefixes": prefixes,
         "masks": list(_ESHOP_MASKS),
         # Cool — главный раздел: двузначные маски 00…99 открывают почти весь пул (разбор: 43 тыс. номеров
         # против ~7 тыс. с трёх-четырёхзначными), бесплатные — короткий набор (там красивое почти не бывает).
         "masks_by_category": {"101": [""] + [f"{a}{b}" for a in range(10) for b in range(10)],
-                              "-1": list(_ESHOP_MASKS)},
+                              "100": [""] + [str(d) * 4 for d in range(10)] + [str(d) * 3 for d in range(10)]
+                              + ["807", "808", "080", "070", "707", "474", "747", "007", "1234", "9876"]},
         "pages": 1,
         "categories_url": f"https://{domain}/eshop/catalog/numbers/categories",
         "warmup_url": f"https://{domain}/eshop/sim-web/ru/numbers",
@@ -157,7 +160,7 @@ class Config:
         self.admin_chat_id = int(os.getenv("ADMIN_CHAT_ID", "0") or 0)
         self.db_path = _default_db_path()
         self.min_score = int(os.getenv("MIN_SCORE", "55"))
-        self.max_price = int(os.getenv("MAX_PRICE", "5500"))
+        self.max_price = int(os.getenv("MAX_PRICE", "14500"))
         # Дорогие номера (от 10 000 ₸, VIP) присылаем только если они действительно «чёткие»
         self.vip_min_score = int(os.getenv("VIP_MIN_SCORE", "65"))
         self.proxy_url = os.getenv("PROXY_URL", "").strip() or None

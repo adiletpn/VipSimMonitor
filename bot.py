@@ -18,7 +18,7 @@ import aiohttp
 from config import parse_auth_patch
 from notifier import ram_mb
 from parsers.base_parser import ASTANA_TZ
-from scorer import LEVEL_NAME, NICE, TEST_NUMBERS, TOP, classify, fmt_human, normalize
+from scorer import LEVEL_NAME, NICE, SUPER, TEST_NUMBERS, TOP, classify, fmt_human, normalize
 from tg import TgError, btn_cb, kb
 
 log = logging.getLogger("bot")
@@ -28,11 +28,13 @@ _CMD = re.compile(r"^/(\w+)(?:@\w+)?\s*(.*)$", re.S)
 # Разделы: (заголовок, цена от, цена до)
 SECTIONS = {
     "cool": ("💎 Cool 4 500 ₸", 4500, 4500),
+    "vip": ("👑 VIP 14 500 ₸", 14500, 14500),
     "bronze": ("🥉 Activ/Kcell Бронза 5 500 ₸", 5500, 5500),
 }
 PAGE = 15
 _MENU_ROWS = (
-    [btn_cb("💎 Cool 4 500", "list:cool:0"), btn_cb("🥉 Бронза 5 500", "list:bronze:0")],
+    [btn_cb("💎 Cool 4 500", "list:cool:0"), btn_cb("👑 VIP 14 500", "list:vip:0")],
+    [btn_cb("🥉 Бронза 5 500", "list:bronze:0")],
     [btn_cb("❤️ Избранное", "favs"), btn_cb("📊 Статус", "status")],
     [btn_cb("🗑 Очистить всё", "clear:all")],
 )
@@ -74,14 +76,14 @@ def _need(app, price_from: int) -> int:
 
 
 def _mark(level: int, soft: int) -> str:
-    return "🔥" if level >= TOP else "💎" if level >= NICE else "двойки"
+    return "🔥🔥" if level >= SUPER else "🔥" if level >= TOP else "💎" if level >= NICE else "двойки"
 
 
 async def status_text(app) -> str:
     s = await app.db.stats()
     lines = [
         "<b>📊 Статус</b>",
-        f"Присылаю только <b>🔥 ТОП-номера</b> (до {app.cfg.max_price} ₸). 💎 Красивые — в разделах и итоге дня"
+        f"Присылаю только <b>🔥🔥 ЖИР</b> (до {app.cfg.max_price} ₸). 🔥 топ и 💎 красивые — в разделах и итоге дня"
         + (" · 🚀 турбо" if app.cfg.turbo else ""),
         "",
         f"Сегодня проверено: <b>{s['scanned_day']}</b> номеров, найдено: <b>{s['catches_day']}</b>",
@@ -105,7 +107,7 @@ async def section_view(app, key: str, page: int = 0) -> tuple[str, dict]:
     total = await app.db.count_available(lo, hi, need)
     rows = await app.db.available(lo, hi, need, limit=PAGE, offset=page * PAGE)
     soft_note = ""
-    lines = [f"<b>{title}</b> · 🔥 ТОП и 💎 красивые{soft_note}",
+    lines = [f"<b>{title}</b> · 🔥🔥 жир, 🔥 топ, 💎 красивые{soft_note}",
              f"<i>Доступно на витрине (видел за 12 ч): {total}</i>", ""]
     if not rows:
         lines.append("Пока пусто — как только поймаю, появятся здесь.")
@@ -164,9 +166,10 @@ async def cmd_start(app, msg, args):
     await app.bot.send_message(
         msg["chat"]["id"],
         f"👋 Я круглосуточно ищу красивые номера <b>{names}</b>.\n\n"
-        "Сюда приходят только <b>🔥 ТОП-номера</b>: тройка в хвосте (891-88-85, 58-88, 77-77), блок наоборот кода "
-"(708 807), в ритм коду (708 808) или как код (707 707) — с кнопкой <b>«⚡ ЗАБРАТЬ НОМЕР»</b>. Не больше 5 карточек в час, "
-        "остальные — одним списком. 💎 Красивые попроще — в разделах, итог дня — в 23:00.\n\n"
+        "Сюда приходят только <b>🔥🔥 ЖИР-номера</b> — где сходятся два сильных признака: блок наоборот кода "
+        "или в ритм коду (708 807, 708 808) + тройка в хвосте (708 807-29-99), а также хвост 77-77, всего две "
+        "цифры после кода, лесенки. Такие бывают редко — зато без мусора.\n"
+        "🔥 Топ с одним признаком (891-88-85) и 💎 красивые — в разделах, итог дня — в 23:00.\n\n"
         "Кнопки ниже — списки пойманных номеров по разделам, которые сейчас есть на витрине.",
         reply_markup=STATUS_KB)
 

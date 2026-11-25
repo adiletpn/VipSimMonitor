@@ -16,7 +16,7 @@ from database import Database
 from notifier import Notifier, ram_mb
 from parsers import PARSERS
 from parsers.base_parser import ASTANA_TZ
-from scorer import classify, doubles
+from scorer import NICE, classify, doubles
 from tg import TgBot, TgError
 
 log = logging.getLogger("main")
@@ -113,6 +113,7 @@ async def main() -> None:
         level, rules = classify(ph)
         return level, rules or (doubles(ph) if soft else [])
     log.info("Пересчитано уловов: %d", await db.rescore(_rescore))
+    log.info("Уборка: удалено слабых уловов %d", await db.purge_weak(NICE))
 
     connector = aiohttp.TCPConnector(limit=15, ttl_dns_cache=300, enable_cleanup_closed=True)
     bot = TgBot(cfg.bot_token, connector)

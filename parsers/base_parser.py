@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 import aiohttp
 
-from scorer import NICE, TOP, classify, doubles, fmt_human, normalize, price_ok
+from scorer import NICE, SUPER, classify, doubles, fmt_human, normalize, price_ok
 from notifier import build_card
 
 try:
@@ -361,7 +361,7 @@ class BaseParser:
             price = found[ph]
             if not price_ok(price, cfg.max_price):
                 continue
-            if level == TOP:
+            if level == SUPER:
                 if not await self.db.add_catch(ph, self.TITLE, level, price, rules):
                     continue
                 self.caught += 1
@@ -371,7 +371,7 @@ class BaseParser:
                 line = (f'<a href="{html.escape(link)}">{fmt_human(ph)}</a> · {self.TITLE} · {price_txt} — '
                         f"{html.escape(rules[0]) if rules else ''}")
                 self.notifier.push_top(text, kb, line, free=(price == 0))
-            elif level == NICE:
+            elif level >= NICE:  # 🔥 ТОП с одним признаком и 💎 — только в разделы
                 soft.append((ph, level, price, rules))
             elif price in soft_prices:
                 d = doubles(ph)

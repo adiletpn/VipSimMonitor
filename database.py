@@ -196,6 +196,18 @@ class Database:
                 (int(time.time()) - hours * 3600, min_score, limit)) as cur:
             return await cur.fetchall()
 
+    async def purge_weak(self, min_score: int) -> int:
+        """Удаляет уловы, которые не проходят текущие правила (кроме избранного), и сжимает файл БД."""
+        cur = await self.conn.execute("DELETE FROM catches WHERE score < ? AND fav = 0", (min_score,))
+        n = cur.rowcount
+        await cur.close()
+        await self.conn.commit()
+        if n > 1000:
+            await self.conn.execute("PRAGMA temp_store = FILE")  # VACUUM без всплеска RAM
+            await self.conn.execute("VACUUM")
+            await self.conn.execute("PRAGMA temp_store = MEMORY")
+        return n
+
     async def rescore(self, fn) -> int:
         """Пересчитать баллы всех уловов текущим скорером. fn(phone, soft) -> (score, rules)."""
         async with self.conn.execute("SELECT phone, soft FROM catches") as cur:

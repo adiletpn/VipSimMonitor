@@ -139,8 +139,8 @@ TEST_NUMBERS = ("7008918885", "7088075515", "7076906665", "7473234432", "7076707
 # блок в ритм коду (708 808, 707 070) и блок-лесенка + хвост-лесенка (987-12-34).
 # Не заходят: двойки, 00, зеркала (323-44-32), тройной блок (888-50-76), круглые десятки.
 # ---------------------------------------------------------------------------
-TOP, NICE, NONE = 100, 70, 0
-LEVEL_NAME = {TOP: "🔥 ТОП-НОМЕР", NICE: "💎 КРАСИВЫЙ"}
+SUPER, TOP, NICE, NONE = 120, 100, 70, 0
+LEVEL_NAME = {SUPER: "🔥🔥 ЖИР-НОМЕР", TOP: "🔥 ТОП", NICE: "💎 КРАСИВЫЙ"}
 
 
 def _run(s: str) -> bool:
@@ -150,33 +150,52 @@ def _run(s: str) -> bool:
 
 
 def classify(d: str) -> tuple[int, list[str]]:
-    """Возвращает (TOP | NICE | NONE, причины). TOP присылается карточкой, NICE — только в списки."""
+    """Возвращает (SUPER | TOP | NICE | NONE, причины).
+
+    SUPER (присылается сразу) — два сильных признака вместе (708 807-11-12) или один безусловный
+    (хвост 77-77, всего 2 цифры после кода, лесенки). TOP — один признак по вкусу (891-88-85, 708 807),
+    NICE — повтор пар / две двойки. TOP и NICE только в разделах и итоге дня.
+    """
     p, q, x, y = d[:3], d[3:6], d[6:8], d[8:]
     t, s7 = x + y, d[3:]
-    step = ord(s7[1]) - ord(s7[0])
-    top, nice = [], []
-    if len(set(t)) == 1:
-        top.append(f"хвост {x}-{y}")
-    elif t[0] == t[1] == t[2]:
-        top.append(f"тройка {x}-{y}")
-    elif t[1] == t[2] == t[3]:
-        top.append(f"тройка в конце {x}-{y}")
+    why = []
+    aaaa = len(set(t)) == 1
+    t3 = not aaaa and (t[0] == t[1] == t[2] or t[1] == t[2] == t[3])
+    aabb = x[0] == x[1] and y[0] == y[1] and x != y
+    abab = x == y and x[0] != x[1]
+    if aaaa:
+        why.append(f"хвост {x}-{y}")
+    elif t3:
+        why.append(f"тройка {x}-{y}")
+    block = ""
     if q == p:
-        top.append(f"блок повторяет код: {p} {q}")
+        block = f"блок повторяет код: {p} {q}"
     elif q == p[::-1]:
-        top.append(f"блок наоборот кода: {p} {q}")
+        block = f"блок наоборот кода: {p} {q}"
     elif q[0] == q[2] != q[1] and set(q) <= set(p):
-        top.append(f"блок в ритм коду: {p} {q}")
-    if _run(q) and _run(t):
-        top.append(f"блок-лесенка и хвост-лесенка: {q}-{x}-{y}")
-    if len(set(s7)) <= 2:
-        top.append(f"после кода всего {len(set(s7))} цифры")
-    if step in (1, -1) and all(ord(s7[k + 1]) - ord(s7[k]) == step for k in range(6)):
-        top.append(f"лесенка {q}-{x}-{y}")
-    if x == y and x[0] != x[1]:
-        nice.append(f"повтор пар {x}-{y}")
-    if x[0] == x[1] and y[0] == y[1] and x != y:
-        nice.append(f"две двойки {x}-{y}")
-    if top:
-        return TOP, top + nice
-    return (NICE, nice) if nice else (NONE, [])
+        block = f"блок в ритм коду: {p} {q}"
+    if block:
+        why.append(block)
+    u2 = len(set(s7)) <= 2
+    if u2:
+        why.append(f"после кода всего {len(set(s7))} цифры")
+    l7 = _run(s7)
+    if l7:
+        why.append(f"лесенка {q}-{x}-{y}")
+    ll = not l7 and _run(q) and _run(t)
+    if ll:
+        why.append(f"блок-лесенка и хвост-лесенка: {q}-{x}-{y}")
+    if aabb:
+        why.append(f"две двойки {x}-{y}")
+    if abab:
+        why.append(f"повтор пар {x}-{y}")
+    many = max(s7.count(c) for c in set(s7)) >= 5 or q[0] == q[1] == q[2]
+
+    tail = aaaa or t3 or aabb or abab
+    if aaaa or u2 or l7 or ll or (block and tail) or (t3 and many):
+        return SUPER, why
+    if t3 or block:
+        return TOP, why
+    if aabb or abab:
+        return NICE, why
+    return NONE, []
