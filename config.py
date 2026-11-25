@@ -36,7 +36,7 @@ def _eshop(domain: str, operator_type: str, prefixes: list) -> dict:
                    "96", "85", "87", "72", "88", "89", "90", "70"],
         "params": {"prefix": "{prefix}", "category": "{category}", "mask": "{mask}"},
         # -1 = «Обычный» (0 ₸), 101 = «Cool» (4 500 ₸). VIP (100, 14 500 ₸) выключен по решению владельца.
-        "categories": ["-1", "101"],
+        "categories": ["101"],  # только Cool: в бесплатных ТОП-номеров нет (проверено прицельным поиском)
         "prefixes": prefixes,
         "masks": list(_ESHOP_MASKS),
         # Cool — главный раздел: двузначные маски 00…99 открывают почти весь пул (разбор: 43 тыс. номеров
