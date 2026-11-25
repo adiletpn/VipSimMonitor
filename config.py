@@ -39,6 +39,10 @@ def _eshop(domain: str, operator_type: str, prefixes: list) -> dict:
         "categories": ["-1", "101"],
         "prefixes": prefixes,
         "masks": list(_ESHOP_MASKS),
+        # Cool — главный раздел: двузначные маски 00…99 открывают почти весь пул (разбор: 43 тыс. номеров
+        # против ~7 тыс. с трёх-четырёхзначными), бесплатные — короткий набор (там красивое почти не бывает).
+        "masks_by_category": {"101": [""] + [f"{a}{b}" for a in range(10) for b in range(10)],
+                              "-1": list(_ESHOP_MASKS)},
         "pages": 1,
         "categories_url": f"https://{domain}/eshop/catalog/numbers/categories",
         "warmup_url": f"https://{domain}/eshop/sim-web/ru/numbers",
@@ -61,12 +65,14 @@ OPERATOR_DEFAULTS = {
         "method": "POST",
         "headers": {"Content-Type": "application/json", "X-Customer-Operator-type": "ACTIV",
                     "X-Destination-Brand": "ACTIV", "X-Device-UUID": "{uuid}"},
-        "params": {"page": "0", "size": "100"},
+        "params": {"page": "{page}", "size": "100"},
+        # У Activ/Kcell есть листание: каждая страница — новые 100 номеров
+        "page_start": 0,
+        "pages": 10,
         "payload": {"msisdnCategories": ["{category}"], "phoneNumbers": []},
         # REGULAR = «Простой» (500 ₸), BRONZE = «Бронза» (5 500 ₸, много зеркальных номеров)
         "categories": ["REGULAR", "BRONZE"],
         "masks": [""],
-        "pages": 1,
         "warmup_url": "https://www.activ.kz/ru/new-number",
         "shop_url": "https://www.activ.kz/ru/new-number",
     },
@@ -126,6 +132,7 @@ def _env_operator(name: str) -> dict:
         "cities": [],
         "categories": [],
         "soft_prices": [],
+        "masks_by_category": {},
         "pages": int(os.getenv(p + "PAGES", "3")),
         "page_start": int(os.getenv(p + "PAGE_START", "1")),
         "page_size": int(os.getenv(p + "PAGE_SIZE", "50")),
@@ -210,7 +217,7 @@ class Config:
     async def update_operator(self, name: str, patch: dict) -> dict:
         op = self.merge_operator(name, patch)
         stored = {k: op[k] for k in ("url", "method", "headers", "cookies", "params", "payload", "masks",
-                                     "prefixes", "categories_url", "number_url", "cities", "categories", "soft_prices",
+                                     "prefixes", "categories_url", "number_url", "cities", "categories", "soft_prices", "masks_by_category",
                                      "pages", "page_start", "page_size",
                                      "warmup_url", "shop_url", "enabled")}
         await self._db.set_setting("op:" + name, json.dumps(stored, ensure_ascii=False))
@@ -219,7 +226,8 @@ class Config:
 
 # ---------- разбор /update_auth ----------
 KNOWN_KEYS = frozenset(("url", "method", "headers", "cookies", "params", "payload", "masks", "prefixes",
-                        "categories_url", "number_url", "cities", "categories", "soft_prices", "pages",
+                        "categories_url", "number_url", "cities", "categories", "soft_prices",
+                        "masks_by_category", "pages",
                         "page_start", "page_size", "warmup_url", "shop_url", "enabled", "_replace"))
 
 

@@ -16,8 +16,8 @@ from database import Database
 from notifier import Notifier, ram_mb
 from parsers import PARSERS
 from parsers.base_parser import ASTANA_TZ
-from scorer import doubles, score
-from tg import TgBot, TgError, btn_cb, kb
+from scorer import classify, doubles
+from tg import TgBot, TgError
 
 log = logging.getLogger("main")
 PULSE_EVERY = 15 * 60
@@ -100,23 +100,6 @@ async def digest(app: App, stop: asyncio.Event) -> None:
             log.exception("Не удалось отправить итог дня")
 
 
-async def soft_summary(app: App, stop: asyncio.Event) -> None:
-    """Раз в час — одно сообщение о новых номерах с двойками в Cool (вместо десятков отдельных карточек)."""
-    since = int(time.time())
-    while not await _wait(stop, 3600):
-        now = int(time.time())
-        try:
-            rows = await app.db.soft_since(since)
-            since = now
-            n = sum(c for _, c in rows)
-            if n:
-                app.notifier.push(f"💎 <b>За час в Cool +{n} новых номеров с двойками</b>\n"
-                                  "(двойка в конце / в середине / в блоке). Список — по кнопке, понравившиеся "
-                                  "отмечай 🤍.", kb([btn_cb("💎 Открыть Cool", "list:cool:0")]), total=-1)
-        except Exception:
-            log.exception("Сводка по двойкам не отправлена")
-
-
 async def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"),
                         format="%(asctime)s %(levelname).1s %(name)s: %(message)s")
@@ -127,8 +110,8 @@ async def main() -> None:
     await cfg.sync(db)
     # Баллы уловов из прошлых версий скорера пересчитываются текущим (иначе в списках висят устаревшие оценки)
     def _rescore(ph, soft):
-        sc, rules = score(ph)
-        return sc, rules + (doubles(ph) if soft else [])
+        level, rules = classify(ph)
+        return level, rules or (doubles(ph) if soft else [])
     log.info("Пересчитано уловов: %d", await db.rescore(_rescore))
 
     connector = aiohttp.TCPConnector(limit=15, ttl_dns_cache=300, enable_cleanup_closed=True)
@@ -146,8 +129,7 @@ async def main() -> None:
     tasks += [asyncio.create_task(notifier.run(stop), name="notifier"),
               asyncio.create_task(maintenance(app, stop), name="maintenance"),
               asyncio.create_task(pulse(app, stop), name="pulse"),
-              asyncio.create_task(digest(app, stop), name="digest"),
-              asyncio.create_task(soft_summary(app, stop), name="soft_summary")]
+              asyncio.create_task(digest(app, stop), name="digest")]
     poller = asyncio.create_task(polling(app, stop), name="polling")
     poller.add_done_callback(lambda _: stop.set())
 

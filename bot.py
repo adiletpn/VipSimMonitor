@@ -2,7 +2,7 @@
 
 Кнопки: разделы (бесплатные / Cool / Activ / Бронза) с листанием, ❤️ избранное, статус,
 «Не интересно», «Очистить раздел», «Очистить всё» (с подтверждением, избранное не трогает).
-Скрытые команды: /score N, /turbo, /live, /test [номера], /backup, /digest, /update_auth <op> <cURL|JSON>
+Скрытые команды: /turbo, /live, /test [номера], /backup, /digest, /update_auth <op> <cURL|JSON>
 """
 import asyncio
 import json
@@ -18,7 +18,7 @@ import aiohttp
 from config import parse_auth_patch
 from notifier import ram_mb
 from parsers.base_parser import ASTANA_TZ
-from scorer import TEST_NUMBERS, fmt_human, normalize, rank, score
+from scorer import LEVEL_NAME, NICE, TEST_NUMBERS, TOP, classify, fmt_human, normalize
 from tg import TgError, btn_cb, kb
 
 log = logging.getLogger("bot")
@@ -73,14 +73,18 @@ def _num_link(app, ph: str, op: str, pr) -> str:
 
 
 def _need(app, price_from: int) -> int:
-    return app.cfg.vip_min_score if price_from >= 10000 else app.cfg.min_score
+    return NICE  # в списках — 🔥 ТОП и 💎 КРАСИВЫЕ (+ двойки в Cool и избранное)
+
+
+def _mark(level: int, soft: int) -> str:
+    return "🔥" if level >= TOP else "💎" if level >= NICE else "двойки"
 
 
 async def status_text(app) -> str:
     s = await app.db.stats()
     lines = [
         "<b>📊 Статус</b>",
-        f"Присылаю номера до {app.cfg.max_price} ₸ от <b>{app.cfg.min_score}</b> баллов"
+        f"Присылаю только <b>🔥 ТОП-номера</b> (до {app.cfg.max_price} ₸). 💎 Красивые — в разделах и итоге дня"
         + (" · 🚀 турбо" if app.cfg.turbo else ""),
         "",
         f"Сегодня проверено: <b>{s['scanned_day']}</b> номеров, найдено: <b>{s['catches_day']}</b>",
@@ -89,12 +93,12 @@ async def status_text(app) -> str:
     ]
     for p in app.parsers.values():
         lines.append(f"{escape(p.TITLE)} — {escape(_state(p))} · проверено {p.scanned}")
-    best = await app.db.best_available(app.cfg.min_score)
+    best = await app.db.best_available(NICE)
     if best:
         lines.append("\n<b>🏆 Лучшие, что сейчас на витрине</b> (нажми — откроется оформление):")
         for ph, op, sc, pr, seen in best:
             price = "0 ₸" if not pr else f"{pr:,} ₸".replace(",", " ")
-            lines.append(f"{_num_link(app, ph, op, pr)} · <b>{sc}</b> · {escape(op)} · {price}")
+            lines.append(f"{_mark(sc, 0)} {_num_link(app, ph, op, pr)} · {escape(op)} · {price}")
     return "\n".join(lines)
 
 
@@ -104,12 +108,12 @@ async def section_view(app, key: str, page: int = 0) -> tuple[str, dict]:
     total = await app.db.count_available(lo, hi, need)
     rows = await app.db.available(lo, hi, need, limit=PAGE, offset=page * PAGE)
     soft_note = " (+ номера с двойками)" if key == "cool" else ""
-    lines = [f"<b>{title}</b> · от {_need(app, lo)} баллов{soft_note}",
+    lines = [f"<b>{title}</b> · 🔥 ТОП и 💎 красивые{soft_note}",
              f"<i>Доступно на витрине (видел за 12 ч): {total}</i>", ""]
     if not rows:
         lines.append("Пока пусто — как только поймаю, появятся здесь.")
     for i, (ph, op, sc, pr, seen, fav, soft) in enumerate(rows, page * PAGE + 1):
-        mark = "двойки" if soft and sc < _need(app, lo) else f"<b>{sc}</b>"
+        mark = _mark(sc, soft)
         lines.append(f"{i}. {'❤️ ' if fav else ''}{_num_link(app, ph, op, pr)} · {mark} · {escape(op)} · {_ago(seen)}")
     lines.append("\nНажми на номер — откроется оформление. Кнопка 🤍 с номером — в избранное.")
     nav = []
@@ -147,7 +151,7 @@ async def digest_text(app) -> str:
         total += n
         lines.append(f"<b>{title}</b> — {n} шт.")
         lines.extend(f"{'❤️ ' if fav else ''}{_num_link(app, ph, op, pr)} · "
-                     f"{'двойки' if soft and sc < _need(app, lo) else f'<b>{sc}</b>'} · {escape(op)}"
+                     f"{_mark(sc, soft)} · {escape(op)}"
                      for ph, op, sc, pr, _, fav, soft in rows)
         if n > len(rows):
             lines.append(f"… и ещё {n - len(rows)} — кнопка раздела ниже")
@@ -163,8 +167,8 @@ async def cmd_start(app, msg, args):
     await app.bot.send_message(
         msg["chat"]["id"],
         f"👋 Я круглосуточно ищу красивые номера <b>{names}</b>.\n\n"
-        f"Как только найду подходящий — пришлю его сюда с кнопкой <b>«⚡ ЗАБРАТЬ НОМЕР»</b>, "
-        "она откроет оформление именно этого номера. Каждый вечер в 23:00 — итог дня.\n\n"
+        "Сюда приходят только <b>🔥 ТОП-номера</b> — зеркала из 2–3 цифр, хвосты 77-77, 707 707-45-45 и т.п. — "
+        "с кнопкой <b>«⚡ ЗАБРАТЬ НОМЕР»</b>. 💎 Красивые попроще копятся в разделах, итог дня — в 23:00.\n\n"
         "Кнопки ниже — списки пойманных номеров по разделам, которые сейчас есть на витрине.",
         reply_markup=STATUS_KB)
 
@@ -175,15 +179,6 @@ async def cmd_status(app, msg, args):
 
 async def cmd_digest(app, msg, args):
     await app.bot.send_message(msg["chat"]["id"], await digest_text(app), reply_markup=DIGEST_KB)
-
-
-async def cmd_score(app, msg, args):
-    if not args.isdigit():
-        text = f"Сейчас порог: <b>{app.cfg.min_score}</b>. Пример: <code>/score 65</code>"
-    else:
-        await app.cfg.set_min_score(int(args))
-        text = f"✅ Теперь присылаю номера от <b>{app.cfg.min_score}</b> баллов"
-    await app.bot.send_message(msg["chat"]["id"], text)
 
 
 async def cmd_turbo(app, msg, args):
@@ -210,8 +205,8 @@ async def cmd_test(app, msg, args):
         if not d:
             out.append(f"❌ {escape(raw)} — не мобильный номер Казахстана")
             continue
-        total, rules = score(d)
-        out.append(f"<b>{fmt_human(d)}</b> → <b>{total}</b> {rank(total)}")
+        level, rules = classify(d)
+        out.append(f"<b>{fmt_human(d)}</b> → {LEVEL_NAME.get(level, '— обычный')}")
         out.extend(f"  • {escape(r)}" for r in rules)
     await app.bot.send_message(msg["chat"]["id"], "\n".join(out))
 
@@ -263,7 +258,7 @@ async def cmd_update_auth(app, msg, args):
 
 
 COMMANDS = {
-    "start": cmd_start, "status": cmd_status, "stats": cmd_status, "digest": cmd_digest, "score": cmd_score,
+    "start": cmd_start, "status": cmd_status, "stats": cmd_status, "digest": cmd_digest,
     "turbo": cmd_turbo, "live": cmd_live, "test": cmd_test, "backup": cmd_backup, "update_auth": cmd_update_auth,
 }
 

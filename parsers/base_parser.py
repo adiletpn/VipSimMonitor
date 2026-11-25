@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 import aiohttp
 
-from scorer import doubles, normalize, price_ok, score
+from scorer import NICE, TOP, classify, doubles, normalize, price_ok
 from notifier import build_card
 
 try:
@@ -185,12 +185,15 @@ class BaseParser:
         masks = list(c.get("masks") or [""]) if "{mask}" in blob else [""]
         prefixes = list(c.get("prefixes") or [""]) if "{prefix}" in blob else [""]
         cats = list(c.get("categories") or [""]) if "{category}" in blob else [""]
-        random.shuffle(masks)
         start = int(c.get("page_start", 1))
         pages = range(start, start + max(1, int(c.get("pages", 1))))
         if "{page}" not in blob and "{offset}" not in blob:
             pages = range(start, start + 1)
-        return [(pr, m, p, cat) for m in masks for cat in cats for pr in prefixes for p in pages]
+        by_cat = c.get("masks_by_category") or {}  # у категории может быть свой набор масок
+        targets = [(pr, m, p, cat) for cat in cats for m in (by_cat.get(cat) or masks)
+                   for pr in prefixes for p in pages]
+        random.shuffle(targets)
+        return targets
 
     def _next_target(self) -> tuple[str, str, int, str]:
         if self._idx >= len(self._targets):
@@ -343,7 +346,7 @@ class BaseParser:
         return out
 
     async def process(self, found: dict[str, int | None]) -> None:
-        scored = {ph: score(ph) for ph in found}
+        scored = {ph: classify(ph) for ph in found}
         fresh = await self.db.register(self.NAME, [(ph, pr, scored[ph][0]) for ph, pr in found.items()])
         await self.db.touch_catches(list(found))
         self.scanned += len(found)
@@ -351,24 +354,24 @@ class BaseParser:
         cfg = self.app_cfg
         soft_prices = self.cfg.get("soft_prices") or ()
         soft = []
-        # Решение «присылать или нет» не зависит от того, видели ли номер раньше: после снижения
-        # порога уже просмотренные номера тоже должны прийти. Дубли отсекает таблица catches.
-        for ph, (total, rules) in scored.items():
+        # 🔥 ТОП — сразу карточкой; 💎 КРАСИВЫЙ — в списки и итог дня; двойки в Cool — только в список.
+        # Дубли отсекает таблица catches (номер, который уже присылали, второй раз не придёт).
+        for ph, (level, rules) in scored.items():
             price = found[ph]
             if not price_ok(price, cfg.max_price):
                 continue
-            need = cfg.vip_min_score if (price or 0) >= 10000 else cfg.min_score
-            if total < need:
-                if price in soft_prices:
-                    d = doubles(ph)
-                    if d:
-                        soft.append((ph, total, price, rules + d))
-                continue
-            if not await self.db.add_catch(ph, self.TITLE, total, price, rules):
-                continue
-            self.caught += 1
-            text, kb = build_card(ph, self.TITLE, total, price, rules, self.number_link(ph, price))
-            self.notifier.push(text, kb, free=(price == 0), total=total)
+            if level == TOP:
+                if not await self.db.add_catch(ph, self.TITLE, level, price, rules):
+                    continue
+                self.caught += 1
+                text, kb = build_card(ph, self.TITLE, level, price, rules, self.number_link(ph, price))
+                self.notifier.push(text, kb, free=(price == 0), total=level)
+            elif level == NICE:
+                soft.append((ph, level, price, rules))
+            elif price in soft_prices:
+                d = doubles(ph)
+                if d:
+                    soft.append((ph, level, price, d))
         if soft:
             await self.db.add_soft(self.TITLE, soft)
 

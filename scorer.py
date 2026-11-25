@@ -131,4 +131,83 @@ def rank(total: int) -> str:
     return "📱 НОМЕР ПО ПОРОГУ"
 
 
-TEST_NUMBERS = ("7077077777", "7071234321", "7470007070", "7779994545", "7076707166")
+TEST_NUMBERS = ("7473234432", "7084848784", "7079842248", "7088885036", "7076707166")
+
+# ---------------------------------------------------------------------------
+# Классификатор «на глаз» (основной): уровни вместо баллов.
+# Смотрим только на то, что видно в записи +7 КОД БЛОК-ПАРА-ПАРА.
+# Выводы из разбора 43 214 номеров Cool (Tele2/Altel): хвостов 11-22, 45-45, x-666, лесенок там нет,
+# лучшее, что бывает, — зеркала и номера из 2–3 разных цифр. Поэтому «ТОП» — это их сочетания.
+# ---------------------------------------------------------------------------
+TOP, NICE, NONE = 100, 70, 0
+LEVEL_NAME = {TOP: "🔥 ТОП-НОМЕР", NICE: "💎 КРАСИВЫЙ"}
+
+
+def _feats(d: str) -> dict:
+    p, q, x, y = d[:3], d[3:6], d[6:8], d[8:]
+    s7, t = d[3:], x + y
+    step = ord(s7[1]) - ord(s7[0])
+    return {
+        "mirror": s7 == s7[::-1] or d[4:] == d[4:][::-1],
+        "uniq": len(set(s7)),
+        "aaaa": len(set(t)) == 1,
+        "abab": x == y and x[0] != x[1],
+        "aabb": x[0] == x[1] and y[0] == y[1] and x != y,
+        "abba": x == y[::-1] and x[0] != x[1],
+        "tail3": t[1] == t[2] == t[3] and t[0] != t[1],          # 86-66
+        "block3": q[0] == q[1] == q[2],                           # 888
+        "code_dup": q == p,                                       # 707 707
+        "echo": q[1:] in (x, y) or q[:2] in (x, y),               # 484-84 / 452-45
+        "pair00": "00" in (x, y),
+        "ladder7": step in (1, -1) and all(ord(s7[k + 1]) - ord(s7[k]) == step for k in range(6)),
+        "dbl": (x[0] == x[1]) + (y[0] == y[1]),
+    }
+
+
+def classify(d: str) -> tuple[int, list[str]]:
+    """Возвращает (TOP | NICE | NONE, причины). Только TOP присылается отдельной карточкой."""
+    f = _feats(d)
+    q, x, y = d[3:6], d[6:8], d[8:]
+    why = []
+    if f["mirror"]:
+        why.append(f"зеркало {q}-{x}-{y}")
+    if f["uniq"] <= 3:
+        why.append(f"после кода всего {f['uniq']} разные цифры")
+    if f["aaaa"]:
+        why.append(f"хвост {x}-{y}")
+    if f["abab"]:
+        why.append(f"повтор пар {x}-{y}")
+    if f["aabb"]:
+        why.append(f"две двойки {x}-{y}")
+    if f["abba"]:
+        why.append(f"зеркальный хвост {x}-{y}")
+    if f["tail3"]:
+        why.append(f"тройка в конце {x}-{y}")
+    if f["block3"]:
+        why.append(f"тройной блок {q}")
+    if f["code_dup"]:
+        why.append(f"блок повторяет код {d[:3]} {q}")
+    if f["ladder7"]:
+        why.append(f"лесенка {q}-{x}-{y}")
+    if f["echo"]:
+        why.append("блок перекликается с парой")
+    if f["pair00"]:
+        why.append("пара 00")
+
+    tail_pattern = f["aaaa"] or f["abab"] or f["aabb"] or f["abba"] or f["tail3"]
+    top = (
+        (f["mirror"] and f["uniq"] <= 3)                              # 323-44-32, 898-22-89
+        or f["uniq"] <= 2                                             # 7 цифр из двух
+        or f["aaaa"]                                                  # xxx-77-77
+        or f["ladder7"]                                               # 123-45-67
+        or (f["code_dup"] and (tail_pattern or f["dbl"] == 2))        # 707 707-45-45
+        or ((f["abab"] or f["aabb"] or f["tail3"]) and (f["uniq"] <= 3 or f["block3"] or f["echo"]))
+        or (f["block3"] and (f["abba"] or f["dbl"] == 2 or f["uniq"] <= 3))   # 888-48-84
+    )
+    if top:
+        return TOP, why
+    nice = (
+        f["mirror"] or f["uniq"] <= 3 or tail_pattern or f["code_dup"]
+        or (f["block3"] and (f["echo"] or f["pair00"] or f["dbl"]))
+    )
+    return (NICE, why) if nice else (NONE, why)

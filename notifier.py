@@ -8,7 +8,7 @@ from html import escape
 
 import aiohttp
 
-from scorer import fmt_human, fmt_plain, rank
+from scorer import LEVEL_NAME, fmt_human, fmt_plain
 from tg import RetryAfter, TgBot, TgError, btn_cb, btn_url, kb as make_kb
 
 log = logging.getLogger("notifier")
@@ -32,14 +32,14 @@ def price_label(price: int | None) -> str:
 def build_card(phone: str, operator_title: str, total: int, price: int | None,
                rules: list[str], shop_url: str) -> tuple[str, dict | None]:
     lines = [
-        f"<b>{rank(total)}</b> · <b>{total}</b>/100",
+        f"<b>{LEVEL_NAME.get(total, '📱 НОМЕР')}</b>",
         "",
         f"📱 <b>{fmt_human(phone)}</b>",
         f"📋 <code>{fmt_plain(phone)}</code>",
         "",
         f"📡 Оператор: <b>{escape(operator_title)}</b>",
         f"💰 Цена: {price_label(price)}",
-        "🧮 Почему красивый:",
+        "✨ Чем хорош:",
         *(f"  • {escape(r)}" for r in rules),
         "",
         "⚡ <i>Жми кнопку → выбери eSIM → ИИН → подтверждение. 60 секунд, номера разбирают быстро.</i>",
