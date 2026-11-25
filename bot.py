@@ -107,7 +107,7 @@ async def section_view(app, key: str, page: int = 0) -> tuple[str, dict]:
     need = _need(app, lo)
     total = await app.db.count_available(lo, hi, need)
     rows = await app.db.available(lo, hi, need, limit=PAGE, offset=page * PAGE)
-    soft_note = " (+ номера с двойками)" if key == "cool" else ""
+    soft_note = ""
     lines = [f"<b>{title}</b> · 🔥 ТОП и 💎 красивые{soft_note}",
              f"<i>Доступно на витрине (видел за 12 ч): {total}</i>", ""]
     if not rows:
@@ -167,8 +167,9 @@ async def cmd_start(app, msg, args):
     await app.bot.send_message(
         msg["chat"]["id"],
         f"👋 Я круглосуточно ищу красивые номера <b>{names}</b>.\n\n"
-        "Сюда приходят только <b>🔥 ТОП-номера</b> — зеркала из 2–3 цифр, хвосты 77-77, 707 707-45-45 и т.п. — "
-        "с кнопкой <b>«⚡ ЗАБРАТЬ НОМЕР»</b>. 💎 Красивые попроще копятся в разделах, итог дня — в 23:00.\n\n"
+        "Сюда приходят только <b>🔥 ТОП-номера</b>: тройка в хвосте (891-88-85, 58-88, 77-77), блок наоборот кода "
+        "(708 807) или как код (707 707) — с кнопкой <b>«⚡ ЗАБРАТЬ НОМЕР»</b>. Не больше 5 карточек в час, "
+        "остальные — одним списком. 💎 Красивые попроще — в разделах, итог дня — в 23:00.\n\n"
         "Кнопки ниже — списки пойманных номеров по разделам, которые сейчас есть на витрине.",
         reply_markup=STATUS_KB)
 

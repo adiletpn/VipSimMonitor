@@ -129,7 +129,8 @@ async def main() -> None:
     tasks += [asyncio.create_task(notifier.run(stop), name="notifier"),
               asyncio.create_task(maintenance(app, stop), name="maintenance"),
               asyncio.create_task(pulse(app, stop), name="pulse"),
-              asyncio.create_task(digest(app, stop), name="digest")]
+              asyncio.create_task(digest(app, stop), name="digest"),
+              asyncio.create_task(notifier.bundle_loop(stop), name="bundle")]
     poller = asyncio.create_task(polling(app, stop), name="polling")
     poller.add_done_callback(lambda _: stop.set())
 

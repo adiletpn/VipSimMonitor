@@ -1,6 +1,7 @@
 """Базовый парсер: ротация масок/страниц, человеческие паузы, прогрев кук, прокси, вежливый Circuit Breaker."""
 import asyncio
 import gc
+import html
 import json
 import logging
 import random
@@ -12,7 +13,7 @@ from urllib.parse import urlsplit
 
 import aiohttp
 
-from scorer import NICE, TOP, classify, doubles, normalize, price_ok
+from scorer import NICE, TOP, classify, doubles, fmt_human, normalize, price_ok
 from notifier import build_card
 
 try:
@@ -364,8 +365,12 @@ class BaseParser:
                 if not await self.db.add_catch(ph, self.TITLE, level, price, rules):
                     continue
                 self.caught += 1
-                text, kb = build_card(ph, self.TITLE, level, price, rules, self.number_link(ph, price))
-                self.notifier.push(text, kb, free=(price == 0), total=level)
+                link = self.number_link(ph, price)
+                text, kb = build_card(ph, self.TITLE, level, price, rules, link)
+                price_txt = "0 ₸" if not price else f"{price:,} ₸".replace(",", " ")
+                line = (f'<a href="{html.escape(link)}">{fmt_human(ph)}</a> · {self.TITLE} · {price_txt} — '
+                        f"{html.escape(rules[0]) if rules else ''}")
+                self.notifier.push_top(text, kb, line, free=(price == 0))
             elif level == NICE:
                 soft.append((ph, level, price, rules))
             elif price in soft_prices:

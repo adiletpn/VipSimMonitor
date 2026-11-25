@@ -171,7 +171,7 @@ class Database:
         await self.conn.commit()
 
     _AVAIL = ("FROM catches WHERE price BETWEEN ? AND ? AND last_seen >= ? AND hidden = 0 "
-              "AND (score >= ? OR soft = 1 OR fav = 1)")
+              "AND (score >= ? OR fav = 1)")
 
     async def available(self, price_from: int, price_to: int, min_score: int, hours: int = 12, limit: int = 30,
                         offset: int = 0) -> list:

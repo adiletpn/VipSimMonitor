@@ -50,7 +50,7 @@ def _eshop(domain: str, operator_type: str, prefixes: list) -> dict:
         # Тот же адрес, куда ведёт клик по номеру на сайте: сразу оформление этого номера
         "number_url": f"https://{domain}/eshop/sim-web/ru/checkout?phone={{phone}}&price={{price}}",
         # Cool (4 500 ₸): номера с двойками сохраняются в список без отдельного уведомления (их там ~половина)
-        "soft_prices": [4500],
+        "soft_prices": [],  # двойки больше не собираем: по тесту вкуса не заходят
     }
 
 
