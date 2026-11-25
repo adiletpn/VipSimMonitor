@@ -70,8 +70,8 @@ OPERATOR_DEFAULTS = {
         "page_start": 0,
         "pages": 10,
         "payload": {"msisdnCategories": ["{category}"], "phoneNumbers": []},
-        # REGULAR = «Простой» (500 ₸), BRONZE = «Бронза» (5 500 ₸, много зеркальных номеров)
-        "categories": ["REGULAR", "BRONZE"],
+        # Только BRONZE (5 500 ₸). REGULAR («Простой», 500 ₸) убран: из 500 номеров под вкус не подошёл ни один.
+        "categories": ["BRONZE"],
         "masks": [""],
         "warmup_url": "https://www.activ.kz/ru/new-number",
         "shop_url": "https://www.activ.kz/ru/new-number",

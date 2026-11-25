@@ -29,14 +29,13 @@ _CMD = re.compile(r"^/(\w+)(?:@\w+)?\s*(.*)$", re.S)
 SECTIONS = {
     "free": ("🆓 Бесплатные (Tele2/Altel)", 0, 0),
     "cool": ("💎 Cool 4 500 ₸", 4500, 4500),
-    "activ": ("📶 Activ/Kcell 500 ₸", 500, 500),
     "bronze": ("🥉 Activ/Kcell Бронза 5 500 ₸", 5500, 5500),
 }
 PAGE = 15
 _MENU_ROWS = (
     [btn_cb("🆓 Бесплатные", "list:free:0"), btn_cb("💎 Cool 4 500", "list:cool:0")],
-    [btn_cb("📶 Activ 500", "list:activ:0"), btn_cb("🥉 Бронза 5 500", "list:bronze:0")],
-    [btn_cb("❤️ Избранное", "favs"), btn_cb("📊 Статус", "status")],
+    [btn_cb("🥉 Бронза 5 500", "list:bronze:0"), btn_cb("❤️ Избранное", "favs")],
+    [btn_cb("📊 Статус", "status")],
     [btn_cb("🗑 Очистить всё", "clear:all")],
 )
 STATUS_KB = kb(*_MENU_ROWS)
