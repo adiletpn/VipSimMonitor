@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 import aiohttp
 
-from scorer import NICE, SUPER, classify, doubles, fmt_human, normalize, price_ok
+from scorer import NICE, SUPER, doubles, fmt_human, level_for, normalize, price_ok
 from notifier import build_card
 
 try:
@@ -347,7 +347,7 @@ class BaseParser:
         return out
 
     async def process(self, found: dict[str, int | None]) -> None:
-        scored = {ph: classify(ph) for ph in found}
+        scored = {ph: level_for(ph, pr) for ph, pr in found.items()}
         fresh = await self.db.register(self.NAME, [(ph, pr, scored[ph][0]) for ph, pr in found.items()])
         await self.db.touch_catches(list(found))
         self.scanned += len(found)

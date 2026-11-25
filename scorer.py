@@ -199,3 +199,48 @@ def classify(d: str) -> tuple[int, list[str]]:
     if aabb or abab:
         return NICE, why
     return NONE, []
+
+
+VIP_PRICE = 10000
+
+
+def vip_super(d: str) -> list[str]:
+    """ЖИР для VIP: то, чего не бывает в Cool (разбор: 4 из 43 тыс.) + второй сильный признак.
+
+    Хвост: 77-77, 47-47, 00-88 (тройка 29-99 на глаз не отличается от Cool-овской 99-92 — не считается).
+    Второй признак: хвост из цифр кода (747 873-47-47, 708 903-87-77),
+    блок под код, тройной блок, 5+ одинаковых или ≤3 разных цифр после кода. Пусто — не ЖИР.
+    """
+    p, q, x, y = d[:3], d[3:6], d[6:8], d[8:]
+    t, s7 = x + y, d[3:]
+    if len(set(t)) == 1:
+        tail = f"хвост {x}-{y}"
+    elif x == y and x[0] != x[1]:
+        tail = f"повтор пар {x}-{y}"
+    elif x[0] == x[1] and y[0] == y[1]:
+        tail = f"две двойки {x}-{y}"
+    else:
+        return []
+    second = []
+    if set(t) <= set(p):
+        second.append(f"хвост из цифр кода {p}")
+    if q == p or q == p[::-1] or (q[0] == q[2] != q[1] and set(q) <= set(p)):
+        second.append(f"блок под код: {p} {q}")
+    if q[0] == q[1] == q[2]:
+        second.append(f"тройной блок {q}")
+    if max(s7.count(c) for c in set(s7)) >= 5 or len(set(s7)) <= 3:
+        second.append("почти одни одинаковые цифры")
+    return [tail + " — в Cool такого не бывает", *second] if second else []
+
+
+def level_for(d: str, price: int | None) -> tuple[int, list[str]]:
+    """Итоговый уровень с учётом цены: в VIP ЖИР — только то, что заметно круче Cool."""
+    level, why = classify(d)
+    if (price or 0) < VIP_PRICE:
+        return level, why
+    vip = vip_super(d)
+    if vip:
+        return SUPER, vip
+    if level == SUPER:
+        return TOP, why  # по меркам Cool жир, но за 14 500 ₸ — просто топ
+    return level, why

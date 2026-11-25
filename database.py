@@ -209,12 +209,12 @@ class Database:
         return n
 
     async def rescore(self, fn) -> int:
-        """Пересчитать баллы всех уловов текущим скорером. fn(phone, soft) -> (score, rules)."""
-        async with self.conn.execute("SELECT phone, soft FROM catches") as cur:
+        """Пересчитать уровни всех уловов текущими правилами. fn(phone, soft, price) -> (score, rules)."""
+        async with self.conn.execute("SELECT phone, soft, price FROM catches") as cur:
             rows = await cur.fetchall()
         upd = []
-        for ph, soft in rows:
-            sc, rules = fn(ph, soft)
+        for ph, soft, price in rows:
+            sc, rules = fn(ph, soft, price)
             upd.append((sc, "\n".join(rules), ph))
         await self.conn.executemany("UPDATE catches SET score = ?, rules = ? WHERE phone = ?", upd)
         await self.conn.commit()

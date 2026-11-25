@@ -16,7 +16,7 @@ from database import Database
 from notifier import Notifier, ram_mb
 from parsers import PARSERS
 from parsers.base_parser import ASTANA_TZ
-from scorer import NICE, classify, doubles
+from scorer import NICE, doubles, level_for
 from tg import TgBot, TgError
 
 log = logging.getLogger("main")
@@ -109,8 +109,8 @@ async def main() -> None:
     await db.connect()
     await cfg.sync(db)
     # Баллы уловов из прошлых версий скорера пересчитываются текущим (иначе в списках висят устаревшие оценки)
-    def _rescore(ph, soft):
-        level, rules = classify(ph)
+    def _rescore(ph, soft, price):
+        level, rules = level_for(ph, price)
         return level, rules or (doubles(ph) if soft else [])
     log.info("Пересчитано уловов: %d", await db.rescore(_rescore))
     log.info("Уборка: удалено слабых уловов %d", await db.purge_weak(NICE))
