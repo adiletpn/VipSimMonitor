@@ -36,9 +36,9 @@ def _eshop(domain: str, operator_type: str, prefixes: list) -> dict:
                    "96", "85", "87", "72", "88", "89", "90", "70"],
         "params": {"prefix": "{prefix}", "category": "{category}", "mask": "{mask}"},
         # -1 = «Обычный» (0 ₸), 101 = «Cool» (4 500 ₸). VIP (100, 14 500 ₸) выключен по решению владельца.
-        # Cool (101) — полный перебор; VIP (100, 14 500 ₸) — прицельно: тройки/четвёрки и блоки под код.
-        # Бесплатные не проверяем: прицельный поиск не нашёл там ни одного подходящего номера.
-        "categories": ["101", "100"],
+        # Только Cool (101) — полный перебор. VIP (100, 14 500 ₸) выключен по решению владельца
+        # (чтобы включить — добавить "100" и поднять MAX_PRICE). Бесплатные: подходящих номеров нет.
+        "categories": ["101"],
         "prefixes": prefixes,
         "masks": list(_ESHOP_MASKS),
         # Cool — главный раздел: двузначные маски 00…99 открывают почти весь пул (разбор: 43 тыс. номеров
@@ -160,7 +160,7 @@ class Config:
         self.admin_chat_id = int(os.getenv("ADMIN_CHAT_ID", "0") or 0)
         self.db_path = _default_db_path()
         self.min_score = int(os.getenv("MIN_SCORE", "55"))
-        self.max_price = int(os.getenv("MAX_PRICE", "14500"))
+        self.max_price = int(os.getenv("MAX_PRICE", "5500"))
         # Дорогие номера (от 10 000 ₸, VIP) присылаем только если они действительно «чёткие»
         self.vip_min_score = int(os.getenv("VIP_MIN_SCORE", "65"))
         self.proxy_url = os.getenv("PROXY_URL", "").strip() or None

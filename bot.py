@@ -28,13 +28,11 @@ _CMD = re.compile(r"^/(\w+)(?:@\w+)?\s*(.*)$", re.S)
 # Разделы: (заголовок, цена от, цена до)
 SECTIONS = {
     "cool": ("💎 Cool 4 500 ₸", 4500, 4500),
-    "vip": ("👑 VIP 14 500 ₸", 14500, 14500),
     "bronze": ("🥉 Activ/Kcell Бронза 5 500 ₸", 5500, 5500),
 }
 PAGE = 15
 _MENU_ROWS = (
-    [btn_cb("💎 Cool 4 500", "list:cool:0"), btn_cb("👑 VIP 14 500", "list:vip:0")],
-    [btn_cb("🥉 Бронза 5 500", "list:bronze:0")],
+    [btn_cb("💎 Cool 4 500", "list:cool:0"), btn_cb("🥉 Бронза 5 500", "list:bronze:0")],
     [btn_cb("❤️ Избранное", "favs"), btn_cb("📊 Статус", "status")],
     [btn_cb("🗑 Очистить всё", "clear:all")],
 )
